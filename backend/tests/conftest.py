@@ -102,6 +102,40 @@ def short_clip(tmp_path_factory) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Rotated video fixture — simulates iPhone portrait recording.
+# Coded as 1280x720 landscape but with a 90° rotation flag, so ffmpeg
+# auto-rotates it to 720x1280 during filter processing.
+# ---------------------------------------------------------------------------
+
+def _generate_rotated_clip(path: Path, width: int, height: int, duration: int, rotation: int):
+    """Create a video with rotation metadata via display matrix."""
+    # Step 1: generate a landscape clip
+    raw = path.with_suffix(".raw.mp4")
+    _generate_clip(raw, width, height, duration, color="0xC0C0C0")
+    # Step 2: apply a display rotation without re-encoding
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-i", str(raw),
+            "-c", "copy",
+            "-metadata:s:v:0", f"rotate={rotation}",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    raw.unlink(missing_ok=True)
+
+
+@pytest.fixture(scope="session")
+def rotated_portrait_clip(tmp_path_factory) -> Path:
+    """1280x720 coded with rotate=90 — displays as 720x1280 portrait."""
+    path = tmp_path_factory.mktemp("fixtures") / "rotated_portrait.mp4"
+    _generate_rotated_clip(path, 1280, 720, 3, rotation=90)
+    return path
+
+
+# ---------------------------------------------------------------------------
 # Still image fixture
 # ---------------------------------------------------------------------------
 

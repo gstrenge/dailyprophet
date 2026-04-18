@@ -356,6 +356,58 @@ def test_crop_filters_large_letterbox():
     assert result[1] == "crop=1680:920:0:0"
 
 
+# ---------------------------------------------------------------------------
+# Rotated video (simulated iPhone portrait)
+# ---------------------------------------------------------------------------
+
+async def test_rotated_video_produces_correct_output(rotated_portrait_clip, tmp_path):
+    """A 1280x720 video with rotate=90 should process to display resolution."""
+    result, _ = await _run(rotated_portrait_clip, tmp_path, "rotated-test")
+    assert result["output_path"].exists()
+    probe = _ffprobe(result["output_path"])
+    vs = _video_stream(probe)
+    assert vs["width"] == config_module.settings.display_width
+    assert vs["height"] == config_module.settings.display_height
+
+
+async def test_rotated_video_crop_within_bounds(rotated_portrait_clip, tmp_path):
+    """Crop coordinates based on displayed (720x1280) dimensions succeed."""
+    params = {"crop_x": 50, "crop_y": 100, "crop_w": 600, "crop_h": 337}
+    result, _ = await _run(rotated_portrait_clip, tmp_path, "rotated-crop-test", edit_params=params)
+    assert result["output_path"].exists()
+    probe = _ffprobe(result["output_path"])
+    vs = _video_stream(probe)
+    assert vs["width"] == config_module.settings.display_width
+    assert vs["height"] == config_module.settings.display_height
+
+
+async def test_rotated_video_crop_exceeds_display_width(rotated_portrait_clip, tmp_path):
+    """Crop wider than the post-rotation width (720) must not crash.
+
+    This is the exact scenario that was failing in production: the crop
+    width (830) exceeded the post-rotation width (720) but was within the
+    coded width (1280), so the old Python-side padding missed it.
+    """
+    params = {"crop_x": 0, "crop_y": 200, "crop_w": 830, "crop_h": 466}
+    result, _ = await _run(rotated_portrait_clip, tmp_path, "rotated-overcrop-test", edit_params=params)
+    assert result["output_path"].exists()
+    probe = _ffprobe(result["output_path"])
+    vs = _video_stream(probe)
+    assert vs["width"] == config_module.settings.display_width
+    assert vs["height"] == config_module.settings.display_height
+
+
+async def test_rotated_video_letterbox_crop(rotated_portrait_clip, tmp_path):
+    """Letterbox (negative offsets) on a rotated video."""
+    params = {"crop_x": -100, "crop_y": -50, "crop_w": 920, "crop_h": 517}
+    result, _ = await _run(rotated_portrait_clip, tmp_path, "rotated-letterbox-test", edit_params=params)
+    assert result["output_path"].exists()
+    probe = _ffprobe(result["output_path"])
+    vs = _video_stream(probe)
+    assert vs["width"] == config_module.settings.display_width
+    assert vs["height"] == config_module.settings.display_height
+
+
 async def test_letterbox_crop_video(landscape_clip, tmp_path):
     """Negative crop offsets (letterbox zoom-out) pad with black before cropping."""
     params = {"crop_x": -200, "crop_y": -100, "crop_w": 1680, "crop_h": 920}
