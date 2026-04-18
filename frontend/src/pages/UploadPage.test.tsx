@@ -49,7 +49,6 @@ describe("UploadPage", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     global.fetch = mockFetch() as any;
-    localStorage.clear();
   });
 
   afterEach(() => {
@@ -84,55 +83,49 @@ describe("UploadPage", () => {
     expect(screen.getByText(/Submit to the Prophet/)).toBeInTheDocument();
   });
 
-  it("resumes polling from localStorage on mount", async () => {
-    localStorage.setItem(
-      "dailyprophet_pending_upload",
-      JSON.stringify({ clipId: "abc-123", fileName: "test.mp4" }),
-    );
-
-    const fetchMock = mockFetch();
-    fetchMock.mockImplementation((url: string) => {
-      if (url.includes("/clips/abc-123/status")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () =>
-            Promise.resolve({
-              id: "abc-123",
-              status: "processing",
-              progress: 50,
-              error_msg: null,
-            }),
-        });
-      }
-      if (url.includes("/config")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () =>
-            Promise.resolve({ display_width: 1920, display_height: 1080, max_clip_duration: 15 }),
-        });
-      }
-      if (url.includes("/storage")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () =>
-            Promise.resolve({ used_bytes: 0, total_allocated_bytes: 10e9, free_bytes: 10e9 }),
-        });
-      }
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
-    });
-    global.fetch = fetchMock as any;
-
+  it("shows letterbox toggle in edit step", async () => {
     await act(async () => {
       render(<UploadPage />, { wrapper: Wrapper });
     });
 
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["hello"], "photo.jpg", { type: "image/jpeg" });
+    Object.defineProperty(input, "files", { value: [file] });
+
     await act(async () => {
-      vi.advanceTimersByTime(3000);
+      fireEvent.change(input);
     });
 
-    expect(screen.getByText(/Processing your portrait/)).toBeInTheDocument();
+    const toggle = screen.getByLabelText(/Show full image/);
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).not.toBeChecked();
+
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+
+    expect(toggle).toBeChecked();
+  });
+
+  it("returns to pick step after reset", async () => {
+    await act(async () => {
+      render(<UploadPage />, { wrapper: Wrapper });
+    });
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["hello"], "test.jpg", { type: "image/jpeg" });
+    Object.defineProperty(input, "files", { value: [file] });
+
+    await act(async () => {
+      fireEvent.change(input);
+    });
+
+    expect(screen.getByText(/test\.jpg/)).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Choose Different File/));
+    });
+
+    expect(screen.getByText(/Choose File/)).toBeInTheDocument();
   });
 });

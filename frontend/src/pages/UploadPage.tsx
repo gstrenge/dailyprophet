@@ -2,15 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Cropper, { Area } from "react-easy-crop";
 import { apiFetch, uploadFile } from "../api/client";
-import { ClipStatusResponse, DisplayConfig, StorageInfo } from "../api/types";
+import { DisplayConfig, StorageInfo } from "../api/types";
 import StorageMeter from "../components/StorageMeter";
 import TrimBar from "../components/TrimBar";
 
 const ACCEPTED =
   "video/mp4,video/quicktime,video/webm,video/x-msvideo,image/jpeg,image/png,image/heic,image/heif";
-const LS_KEY = "dailyprophet_pending_upload";
 
-type Step = "pick" | "edit" | "upload";
+type Step = "pick" | "edit" | "uploading" | "done";
 
 export default function UploadPage() {
   const qc = useQueryClient();
@@ -46,13 +45,11 @@ export default function UploadPage() {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedArea, setCroppedArea] = useState<Area | null>(null);
+  const [showLetterbox, setShowLetterbox] = useState(false);
 
   // --- upload state ---
   const [uploadPct, setUploadPct] = useState(0);
-  const [clipId, setClipId] = useState<string | null>(null);
-  const [clipStatus, setClipStatus] = useState<ClipStatusResponse | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // --- video preview ---
   const editorRef = useRef<HTMLDivElement>(null);
@@ -86,20 +83,6 @@ export default function UploadPage() {
     };
   }, [objectUrl]);
 
-  // --- refresh resilience: check localStorage on mount ---
-  useEffect(() => {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return;
-    try {
-      const { clipId: id, fileName } = JSON.parse(raw);
-      if (id) {
-        setClipId(id);
-        setStep("upload");
-        startPolling(id);
-      }
-    } catch { /* ignore corrupt data */ }
-  }, []);
-
   // --- handlers ---
 
   function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
@@ -120,8 +103,6 @@ export default function UploadPage() {
     setTrimEnd(0);
     setDuration(0);
     setUploadError(null);
-    setClipId(null);
-    setClipStatus(null);
 
     if (video) {
       const tmp = document.createElement("video");
@@ -155,29 +136,11 @@ export default function UploadPage() {
     return isVideo && (trimEnd - trimStart) > maxDur;
   }
 
-  function startPolling(id: string) {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      try {
-        const status = await apiFetch<ClipStatusResponse>(`/clips/${id}/status`);
-        setClipStatus(status);
-        if (status.status === "ready" || status.status === "failed") {
-          clearInterval(pollRef.current!);
-          pollRef.current = null;
-          localStorage.removeItem(LS_KEY);
-          qc.invalidateQueries({ queryKey: ["clips"] });
-          qc.invalidateQueries({ queryKey: ["storage"] });
-        }
-      } catch { /* keep polling */ }
-    }, 2000);
-  }
-
   async function handleUpload() {
     if (!file) return;
-    setStep("upload");
+    setStep("uploading");
     setUploadPct(0);
     setUploadError(null);
-    setClipStatus(null);
 
     const params: Record<string, number> = {};
     if (isVideo) {
@@ -192,36 +155,22 @@ export default function UploadPage() {
     }
 
     try {
-      const result = await uploadFile(file, params, setUploadPct);
-      setClipId(result.id);
-      localStorage.setItem(LS_KEY, JSON.stringify({ clipId: result.id, fileName: file.name }));
-      startPolling(result.id);
+      await uploadFile(file, params, setUploadPct);
+      qc.invalidateQueries({ queryKey: ["clips"] });
+      qc.invalidateQueries({ queryKey: ["storage"] });
+      setStep("done");
     } catch (err: any) {
       setUploadError(err.message || "Upload failed");
     }
   }
 
   function handleReset() {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    localStorage.removeItem(LS_KEY);
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     setFile(null);
     setObjectUrl(null);
     setStep("pick");
-    setClipId(null);
-    setClipStatus(null);
     setUploadError(null);
   }
-
-  // --- cleanup polling on unmount ---
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, []);
 
   // --- render ---
 
@@ -235,7 +184,8 @@ export default function UploadPage() {
 
       {step === "pick" && renderPick()}
       {step === "edit" && renderEdit()}
-      {step === "upload" && renderUpload()}
+      {step === "uploading" && renderUploading()}
+      {step === "done" && renderDone()}
     </div>
   );
 
@@ -289,6 +239,8 @@ export default function UploadPage() {
                 crop={crop}
                 zoom={zoom}
                 aspect={aspect}
+                minZoom={showLetterbox ? 0.1 : 1}
+                restrictPosition={!showLetterbox}
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
                 onCropComplete={onCropComplete}
@@ -300,6 +252,8 @@ export default function UploadPage() {
                 crop={crop}
                 zoom={zoom}
                 aspect={aspect}
+                minZoom={showLetterbox ? 0.1 : 1}
+                restrictPosition={!showLetterbox}
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
                 onCropComplete={onCropComplete}
@@ -307,8 +261,23 @@ export default function UploadPage() {
             )}
           </div>
 
+          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginTop: "0.5rem", fontSize: "0.82rem", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={showLetterbox}
+              onChange={(e) => {
+                setShowLetterbox(e.target.checked);
+                if (!e.target.checked && zoom < 1) setZoom(1);
+              }}
+            />
+            Show full image (black bars)
+          </label>
+
           <p style={{ fontSize: "0.72rem", color: "var(--sepia)", marginTop: "0.4rem", fontStyle: "italic" }}>
-            Drag to reposition. Scroll or pinch to zoom. The highlighted area will be cropped to fit the display.
+            Drag to reposition. Scroll or pinch to zoom.{" "}
+            {showLetterbox
+              ? "Zoom out to show the full image with black bars."
+              : "The highlighted area will be cropped to fit the display."}
           </p>
 
           {/* Trim bar (video only) */}
@@ -350,15 +319,10 @@ export default function UploadPage() {
 
   // --------------------------------------------------
 
-  function renderUpload() {
-    const processing = clipStatus && (clipStatus.status === "processing" || clipStatus.status === "queued");
-    const ready = clipStatus?.status === "ready";
-    const failed = clipStatus?.status === "failed";
-
+  function renderUploading() {
     return (
       <div className="card" style={{ marginTop: "1rem" }}>
-        {/* Upload progress */}
-        {!clipId && !uploadError && (
+        {!uploadError ? (
           <>
             <p style={{ fontFamily: "var(--font-smallcaps)", fontSize: "0.9rem", marginBottom: "0.5rem" }}>
               Uploading {file?.name}…
@@ -370,10 +334,7 @@ export default function UploadPage() {
               {uploadPct}%
             </p>
           </>
-        )}
-
-        {/* Upload error */}
-        {uploadError && (
+        ) : (
           <>
             <p style={{ color: "#721c24", fontSize: "0.9rem", marginBottom: "0.75rem" }}>
               Upload failed: {uploadError}
@@ -383,50 +344,27 @@ export default function UploadPage() {
             </button>
           </>
         )}
+      </div>
+    );
+  }
 
-        {/* Processing progress */}
-        {clipId && processing && (
-          <>
-            <p style={{ fontFamily: "var(--font-smallcaps)", fontSize: "0.9rem", marginBottom: "0.5rem" }}>
-              Processing your portrait…
-            </p>
-            <div className="progress-bar-outer" style={{ height: 10 }}>
-              <div className="progress-bar-inner" style={{ width: `${clipStatus?.progress ?? 0}%` }} />
-            </div>
-            <p style={{ fontSize: "0.75rem", color: "var(--sepia)", marginTop: "0.3rem" }}>
-              {clipStatus?.progress ?? 0}%
-            </p>
-          </>
-        )}
+  // --------------------------------------------------
 
-        {/* Ready */}
-        {ready && (
-          <>
-            <p style={{ color: "#155724", fontSize: "0.9rem", marginBottom: "0.75rem" }}>
-              Your portrait has been enchanted and added to the gallery.
-            </p>
-            <div style={{ display: "flex", gap: "0.75rem" }}>
-              <button className="btn btn-primary" onClick={handleReset}>
-                Upload Another
-              </button>
-              <a href="/queue" className="btn">
-                View Gallery
-              </a>
-            </div>
-          </>
-        )}
-
-        {/* Failed */}
-        {failed && (
-          <>
-            <p style={{ color: "#721c24", fontSize: "0.9rem", marginBottom: "0.5rem" }}>
-              Processing failed{clipStatus?.error_msg ? `: ${clipStatus.error_msg}` : "."}
-            </p>
-            <button className="btn" onClick={handleReset}>
-              Try Again
-            </button>
-          </>
-        )}
+  function renderDone() {
+    return (
+      <div className="card" style={{ marginTop: "1rem" }}>
+        <p style={{ color: "#155724", fontSize: "0.9rem", marginBottom: "0.75rem" }}>
+          Your portrait has been submitted and is being enchanted.
+          Check its progress on the My Clips page.
+        </p>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <button className="btn btn-primary" onClick={handleReset}>
+            Upload Another
+          </button>
+          <a href="/queue" className="btn">
+            My Clips
+          </a>
+        </div>
       </div>
     );
   }

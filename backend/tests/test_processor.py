@@ -13,7 +13,7 @@ import json
 import pytest
 
 import app.config as config_module
-from app.services.processor import process_clip
+from app.services.processor import process_clip, _crop_filters, _detect_rotation
 
 
 # ---------------------------------------------------------------------------
@@ -300,3 +300,80 @@ async def test_trim_and_crop_together(landscape_clip, tmp_path):
     probe = _ffprobe(result["output_path"])
     duration = float(probe["format"]["duration"])
     assert 2.0 < duration < 3.0
+
+
+# ---------------------------------------------------------------------------
+# Letterbox crop (out-of-bounds coordinates from zoom-out)
+# ---------------------------------------------------------------------------
+
+def test_detect_rotation_side_data():
+    """Rotation from Display Matrix side_data."""
+    stream = {"side_data_list": [{"side_data_type": "Display Matrix", "rotation": -90}]}
+    assert _detect_rotation(stream) == -90
+
+
+def test_detect_rotation_tag():
+    """Legacy tags.rotate field."""
+    stream = {"tags": {"rotate": "90"}}
+    assert _detect_rotation(stream) == 90
+
+
+def test_detect_rotation_none():
+    """No rotation metadata returns 0."""
+    assert _detect_rotation({}) == 0
+    assert _detect_rotation({"tags": {}}) == 0
+
+
+def test_crop_filters_normal():
+    """In-bounds crop: pad is a no-op (max expressions), crop is straightforward."""
+    result = _crop_filters((640, 360, 100, 50))
+    assert len(result) == 2
+    assert result[0] == r"pad=max(iw\,740):max(ih\,410):0:0:black"
+    assert result[1] == "crop=640:360:100:50"
+
+
+def test_crop_filters_negative_offset():
+    """Negative x/y shifts the image right/down with left/top padding."""
+    result = _crop_filters((800, 600, -100, -50))
+    assert len(result) == 2
+    assert result[0] == r"pad=max(iw\,800):max(ih\,600):100:50:black"
+    assert result[1] == "crop=800:600:0:0"
+
+
+def test_crop_filters_only_x_negative():
+    """Only negative x still adds left padding."""
+    result = _crop_filters((640, 360, -30, 10))
+    assert len(result) == 2
+    assert result[0] == r"pad=max(iw\,640):max(ih\,370):30:0:black"
+    assert result[1] == "crop=640:360:0:10"
+
+
+def test_crop_filters_large_letterbox():
+    """Large letterbox crop — expressions guarantee enough canvas."""
+    result = _crop_filters((1680, 920, -200, -100))
+    assert len(result) == 2
+    assert result[0] == r"pad=max(iw\,1680):max(ih\,920):200:100:black"
+    assert result[1] == "crop=1680:920:0:0"
+
+
+async def test_letterbox_crop_video(landscape_clip, tmp_path):
+    """Negative crop offsets (letterbox zoom-out) pad with black before cropping."""
+    params = {"crop_x": -200, "crop_y": -100, "crop_w": 1680, "crop_h": 920}
+    result, _ = await _run(landscape_clip, tmp_path, "letterbox-video-test", edit_params=params)
+    assert result["output_path"].exists()
+    probe = _ffprobe(result["output_path"])
+    vs = _video_stream(probe)
+    assert vs["width"] == config_module.settings.display_width
+    assert vs["height"] == config_module.settings.display_height
+
+
+async def test_letterbox_crop_still(still_image, tmp_path):
+    """Negative crop offsets on a still image pad with black correctly."""
+    params = {"crop_x": -50, "crop_y": -30, "crop_w": 740, "crop_h": 540}
+    result, _ = await _run(still_image, tmp_path, "letterbox-still-test", edit_params=params)
+    assert result["media_type"] == "image"
+    assert result["output_path"].exists()
+    probe = _ffprobe(result["output_path"])
+    vs = _video_stream(probe)
+    assert vs["width"] == config_module.settings.display_width
+    assert vs["height"] == config_module.settings.display_height

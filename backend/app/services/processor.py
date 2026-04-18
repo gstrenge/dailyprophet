@@ -146,6 +146,29 @@ def _parse_crop(params: dict) -> tuple[int, int, int, int] | None:
     )
 
 
+def _crop_filters(crop: tuple[int, int, int, int]) -> list[str]:
+    """Return ffmpeg filter(s) for a crop region.
+
+    Uses ffmpeg ``iw``/``ih`` expressions so the pad dynamically adapts to
+    the *actual* input dimensions at filter time.  This is robust against
+    probe-vs-actual mismatches (e.g. auto-rotation swapping width/height).
+
+    When the crop is fully inside the input the pad is a no-op.
+    """
+    cw, ch, cx, cy = crop
+    left = max(0, -cx)
+    top = max(0, -cy)
+    adj_cx = cx + left
+    adj_cy = cy + top
+    min_w = adj_cx + cw
+    min_h = adj_cy + ch
+
+    return [
+        f"pad=max(iw\\,{min_w}):max(ih\\,{min_h}):{left}:{top}:black",
+        f"crop={cw}:{ch}:{adj_cx}:{adj_cy}",
+    ]
+
+
 async def _process_still(
     input_path: Path, out_dir: Path, progress_callback,
     crop: tuple[int, int, int, int] | None = None,
@@ -157,8 +180,7 @@ async def _process_still(
 
     filters: list[str] = []
     if crop:
-        cw, ch, cx, cy = crop
-        filters.append(f"crop={cw}:{ch}:{cx}:{cy}")
+        filters += _crop_filters(crop)
     filters += [
         f"scale={W}:{H}:force_original_aspect_ratio=decrease",
         f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black",
@@ -288,8 +310,7 @@ def _build_filter_complex(
 
     filters: list[str] = []
     if crop:
-        cw, ch, cx, cy = crop
-        filters.append(f"crop={cw}:{ch}:{cx}:{cy}")
+        filters += _crop_filters(crop)
     filters += [
         f"scale={W}:{H}:force_original_aspect_ratio=decrease",
         f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black",
@@ -314,6 +335,24 @@ def _build_filter_complex(
         f"[end_part][start_part]xfade=transition=fade:duration={cfade:.6f}:offset=0[xfaded]",
         "[main][xfaded]concat=n=2:v=1:a=0[out]",
     ])
+
+
+def _detect_rotation(video_stream: dict) -> int:
+    """Return the display rotation (degrees) from an ffprobe video stream.
+
+    Checks both the modern ``side_data_list`` (Display Matrix) and the
+    legacy ``tags.rotate`` field.  Returns 0 when no rotation is found.
+    """
+    for sd in video_stream.get("side_data_list", []):
+        if "rotation" in sd:
+            try:
+                return int(float(sd["rotation"]))
+            except (ValueError, TypeError):
+                pass
+    try:
+        return int(video_stream.get("tags", {}).get("rotate", 0))
+    except (ValueError, TypeError):
+        return 0
 
 
 async def _probe(path: Path) -> _ProbeResult:
@@ -342,6 +381,11 @@ async def _probe(path: Path) -> _ProbeResult:
     if video_stream:
         width = int(video_stream.get("width", settings.display_width))
         height = int(video_stream.get("height", settings.display_height))
+
+        rotation = _detect_rotation(video_stream)
+        if rotation in (90, -90, 270, -270):
+            width, height = height, width
+
         fps_str = video_stream.get("r_frame_rate", f"{settings.target_fps}/1")
         try:
             num, den = fps_str.split("/")
