@@ -31,7 +31,7 @@ export default function ClipCard({ clip, onDelete }: Props) {
         {/* Thumbnail */}
         {clip.thumbnail ? (
           <img
-            src={clip.thumbnail}
+            src={`/api${clip.thumbnail}`}
             alt=""
             style={{ width: 72, height: 48, objectFit: "cover", borderRadius: "2px", flexShrink: 0, border: "1px solid var(--parchment-dark)" }}
           />

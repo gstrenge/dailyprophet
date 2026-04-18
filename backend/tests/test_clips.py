@@ -126,3 +126,17 @@ async def test_delete_returns_204(client):
 
     r = await client.delete(f"/clips/{clip_id}")
     assert r.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# Thumbnail URL contract
+# ---------------------------------------------------------------------------
+
+async def test_ready_clip_has_thumbnail_url(client):
+    r = await client.post("/clips", files={"file": _fake_file()})
+    clip_id = r.json()["id"]
+    await _wait_for_terminal(client, clip_id)
+
+    clips = (await client.get("/clips")).json()
+    clip = next(c for c in clips if c["id"] == clip_id)
+    assert clip["thumbnail"] == f"/clips/{clip_id}/thumbnail"

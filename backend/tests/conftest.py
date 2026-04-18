@@ -23,8 +23,10 @@ async def _stub_processor(clip_id, raw_path, progress_callback):
     out_dir = config_module.settings.clips_dir / clip_id
     out_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(raw_path, out_dir / "processed.mp4")
+    thumb = out_dir / "thumbnail.jpg"
+    thumb.write_bytes(b"\xff\xd8stub")
     await progress_callback(100)
-    return {"output_path": out_dir / "processed.mp4", "thumbnail_path": None, "duration": 5.0}
+    return {"output_path": out_dir / "processed.mp4", "thumbnail_path": thumb, "duration": 5.0}
 
 
 @pytest_asyncio.fixture
