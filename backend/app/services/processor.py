@@ -86,9 +86,11 @@ async def process_clip(
     clip_id: str,
     raw_path: Path,
     progress_callback,  # async (pct: int) -> None
+    edit_params: dict | None = None,
 ) -> dict:
     out_dir = settings.clips_dir / clip_id
     out_dir.mkdir(parents=True, exist_ok=True)
+    edit_params = edit_params or {}
 
     await progress_callback(5)
 
@@ -96,32 +98,74 @@ async def process_clip(
 
     info = await _probe(input_path)
 
+    crop = _parse_crop(edit_params)
+
     if info.is_still:
         logger.info("Input is a still image — processing as image")
-        return await _process_still(input_path, out_dir, progress_callback)
+        return await _process_still(input_path, out_dir, progress_callback, crop)
 
-    if info.duration > settings.max_clip_duration:
+    trim = _parse_trim(edit_params, info.duration)
+    effective_duration = (trim[1] - trim[0]) if trim else info.duration
+
+    if effective_duration > settings.max_clip_duration:
         raise ValueError(
-            f"Clip is {info.duration:.1f}s; maximum allowed is {settings.max_clip_duration}s"
+            f"Clip is {effective_duration:.1f}s; maximum allowed is "
+            f"{settings.max_clip_duration}s"
         )
 
-    return await _process_video(input_path, info, out_dir, progress_callback)
+    return await _process_video(
+        input_path, info, out_dir, progress_callback, trim, crop,
+    )
+
+
+def _parse_trim(
+    params: dict, duration: float,
+) -> tuple[float, float] | None:
+    """Return (start, end) in seconds or None if no trim requested."""
+    s = params.get("trim_start")
+    e = params.get("trim_end")
+    if s is None and e is None:
+        return None
+    start = max(0.0, float(s or 0))
+    end = min(duration, float(e or duration))
+    if end <= start:
+        return None
+    return (start, end)
+
+
+def _parse_crop(params: dict) -> tuple[int, int, int, int] | None:
+    """Return (w, h, x, y) in pixels or None if no crop requested."""
+    keys = ("crop_w", "crop_h", "crop_x", "crop_y")
+    if not all(params.get(k) is not None for k in keys):
+        return None
+    return (
+        int(params["crop_w"]),
+        int(params["crop_h"]),
+        int(params["crop_x"]),
+        int(params["crop_y"]),
+    )
 
 
 async def _process_still(
     input_path: Path, out_dir: Path, progress_callback,
+    crop: tuple[int, int, int, int] | None = None,
 ) -> dict:
     """Resize + letterbox + sepia a still image and save as JPEG."""
     output_path = out_dir / "processed.jpg"
     W = settings.display_width
     H = settings.display_height
 
-    vf = ",".join([
+    filters: list[str] = []
+    if crop:
+        cw, ch, cx, cy = crop
+        filters.append(f"crop={cw}:{ch}:{cx}:{cy}")
+    filters += [
         f"scale={W}:{H}:force_original_aspect_ratio=decrease",
         f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black",
         "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
         "noise=alls=8:allf=t+u",
-    ])
+    ]
+    vf = ",".join(filters)
 
     await progress_callback(10)
 
@@ -153,18 +197,33 @@ async def _process_still(
 
 async def _process_video(
     input_path: Path, info: _ProbeResult, out_dir: Path, progress_callback,
+    trim: tuple[float, float] | None = None,
+    crop: tuple[int, int, int, int] | None = None,
 ) -> dict:
-    """Full video pipeline: resize, sepia, crossfade, encode."""
+    """Full video pipeline: trim, crop, resize, sepia, crossfade, encode."""
     output_path = out_dir / "processed.mp4"
 
     await progress_callback(10)
 
-    cfade = min(settings.crossfade_duration, info.duration / 4)
-    total_frames = max(1, int(info.duration * settings.target_fps))
-    filter_complex = _build_filter_complex(info, cfade)
+    effective_dur = (trim[1] - trim[0]) if trim else info.duration
+    cfade = min(settings.crossfade_duration, effective_dur / 4)
+    total_frames = max(1, int(effective_dur * settings.target_fps))
+
+    trimmed_info = _ProbeResult(
+        duration=effective_dur,
+        width=info.width,
+        height=info.height,
+        fps=info.fps,
+    )
+    filter_complex = _build_filter_complex(trimmed_info, cfade, crop)
+
+    input_opts: list[str] = []
+    if trim:
+        input_opts += ["-ss", f"{trim[0]:.6f}", "-to", f"{trim[1]:.6f}"]
 
     cmd = [
         "ffmpeg", "-y",
+        *input_opts,
         "-i", str(input_path),
         "-filter_complex", filter_complex,
         "-map", "[out]",
@@ -219,20 +278,26 @@ async def _process_video(
     }
 
 
-def _build_filter_complex(info: _ProbeResult, cfade: float) -> str:
+def _build_filter_complex(
+    info: _ProbeResult, cfade: float,
+    crop: tuple[int, int, int, int] | None = None,
+) -> str:
     W = settings.display_width
     H = settings.display_height
     FPS = settings.target_fps
 
-    base = ",".join([
+    filters: list[str] = []
+    if crop:
+        cw, ch, cx, cy = crop
+        filters.append(f"crop={cw}:{ch}:{cx}:{cy}")
+    filters += [
         f"scale={W}:{H}:force_original_aspect_ratio=decrease",
         f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black",
         f"fps={FPS}",
-        # Classic sepia matrix — warms grays toward brown/gold
         "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
-        # Subtle film grain for aged-newspaper texture
         "noise=alls=8:allf=t+u",
-    ])
+    ]
+    base = ",".join(filters)
 
     if cfade < 0.1:
         return f"[0:v]{base}[out]"

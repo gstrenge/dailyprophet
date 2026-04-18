@@ -43,7 +43,8 @@ async def _create_tables():
             thumbnail   TEXT,
             created_at  TEXT NOT NULL,
             sort_order  INTEGER NOT NULL DEFAULT 0,
-            error_msg   TEXT
+            error_msg   TEXT,
+            edit_params TEXT
         );
 
         CREATE TABLE IF NOT EXISTS display_schedule (
@@ -68,3 +69,6 @@ async def _migrate():
         await _db.execute(
             "ALTER TABLE clips ADD COLUMN media_type TEXT NOT NULL DEFAULT 'video'"
         )
+    if "edit_params" not in columns:
+        logger.info("Migrating: adding edit_params column to clips")
+        await _db.execute("ALTER TABLE clips ADD COLUMN edit_params TEXT")

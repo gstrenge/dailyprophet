@@ -1,0 +1,138 @@
+import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import UploadPage from "./UploadPage";
+
+function Wrapper({ children }: { children: React.ReactNode }) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  return (
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+function mockFetch() {
+  return vi.fn((url: string) => {
+    if (url.includes("/config")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            display_width: 1920,
+            display_height: 1080,
+            max_clip_duration: 15,
+          }),
+      });
+    }
+    if (url.includes("/storage")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            used_bytes: 1000,
+            total_allocated_bytes: 10_000_000_000,
+            free_bytes: 9_999_999_000,
+          }),
+      });
+    }
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+  });
+}
+
+describe("UploadPage", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    global.fetch = mockFetch() as any;
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("renders the pick step initially", async () => {
+    await act(async () => {
+      render(<UploadPage />, { wrapper: Wrapper });
+    });
+
+    expect(screen.getByText(/Write Your Story/)).toBeInTheDocument();
+    expect(screen.getByText(/Choose File/)).toBeInTheDocument();
+  });
+
+  it("shows file info and editor after picking a file", async () => {
+    await act(async () => {
+      render(<UploadPage />, { wrapper: Wrapper });
+    });
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["hello"], "test.jpg", { type: "image/jpeg" });
+    Object.defineProperty(input, "files", { value: [file] });
+
+    await act(async () => {
+      fireEvent.change(input);
+    });
+
+    expect(screen.getByText(/test\.jpg/)).toBeInTheDocument();
+    expect(screen.getByText(/Submit to the Prophet/)).toBeInTheDocument();
+  });
+
+  it("resumes polling from localStorage on mount", async () => {
+    localStorage.setItem(
+      "dailyprophet_pending_upload",
+      JSON.stringify({ clipId: "abc-123", fileName: "test.mp4" }),
+    );
+
+    const fetchMock = mockFetch();
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes("/clips/abc-123/status")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              id: "abc-123",
+              status: "processing",
+              progress: 50,
+              error_msg: null,
+            }),
+        });
+      }
+      if (url.includes("/config")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({ display_width: 1920, display_height: 1080, max_clip_duration: 15 }),
+        });
+      }
+      if (url.includes("/storage")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({ used_bytes: 0, total_allocated_bytes: 10e9, free_bytes: 10e9 }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    });
+    global.fetch = fetchMock as any;
+
+    await act(async () => {
+      render(<UploadPage />, { wrapper: Wrapper });
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    expect(screen.getByText(/Processing your portrait/)).toBeInTheDocument();
+  });
+});

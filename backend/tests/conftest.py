@@ -19,7 +19,7 @@ from app.main import app
 # real video files or a working FFmpeg pipeline.
 # ---------------------------------------------------------------------------
 
-async def _stub_processor(clip_id, raw_path, progress_callback):
+async def _stub_processor(clip_id, raw_path, progress_callback, edit_params=None):
     out_dir = config_module.settings.clips_dir / clip_id
     out_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(raw_path, out_dir / "processed.mp4")

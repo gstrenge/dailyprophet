@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.database import init_db, close_db
 from app.services.queue import start_worker, stop_worker
 from app.routes import clips, storage, display, wifi
@@ -34,3 +35,12 @@ app.include_router(wifi.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/config")
+async def get_config():
+    return {
+        "display_width": settings.display_width,
+        "display_height": settings.display_height,
+        "max_clip_duration": settings.max_clip_duration,
+    }

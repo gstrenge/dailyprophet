@@ -7,6 +7,7 @@ enough that resumption adds no value in Phase 1).
 """
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -100,8 +101,18 @@ async def _process(clip_id: str):
         )
         await db.commit()
 
+    edit_params = None
+    raw_edit = row["edit_params"]
+    if raw_edit:
+        try:
+            edit_params = json.loads(raw_edit)
+        except json.JSONDecodeError:
+            logger.warning("Invalid edit_params JSON for clip %s", clip_id)
+
     try:
-        result = await process_clip(clip_id, raw_path, progress_callback)
+        result = await process_clip(
+            clip_id, raw_path, progress_callback, edit_params=edit_params,
+        )
         await db.execute(
             """UPDATE clips
                SET status=?, progress=100, duration=?, media_type=?, thumbnail=?

@@ -20,14 +20,14 @@ from app.services.processor import process_clip
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _run(clip_path, tmp_path, clip_id="test-clip"):
+async def _run(clip_path, tmp_path, clip_id="test-clip", edit_params=None):
     config_module.settings.clips_dir = tmp_path
     progress: list[int] = []
 
     async def cb(pct):
         progress.append(pct)
 
-    result = await process_clip(clip_id, clip_path, cb)
+    result = await process_clip(clip_id, clip_path, cb, edit_params=edit_params)
     return result, progress
 
 
@@ -239,3 +239,64 @@ async def test_heic_is_processed_as_image(heic_still, tmp_path):
     assert result["output_path"].suffix == ".jpg"
     assert result["output_path"].exists()
     assert 100 in progress
+
+
+# ---------------------------------------------------------------------------
+# Trim support
+# ---------------------------------------------------------------------------
+
+async def test_trim_shortens_output_duration(landscape_clip, tmp_path):
+    """Trimming a 5s clip to 1s–3s should produce ~2s output."""
+    params = {"trim_start": 1.0, "trim_end": 3.0}
+    result, _ = await _run(landscape_clip, tmp_path, "trim-test", edit_params=params)
+    probe = _ffprobe(result["output_path"])
+    duration = float(probe["format"]["duration"])
+    assert 1.5 < duration < 2.8
+
+
+async def test_trim_beyond_max_is_rejected(long_clip, tmp_path):
+    """A 20s clip trimmed to 0–18s still exceeds max_clip_duration."""
+    params = {"trim_start": 0.0, "trim_end": 18.0}
+    config_module.settings.clips_dir = tmp_path
+    with pytest.raises(ValueError, match="maximum allowed"):
+        await process_clip("x", long_clip, lambda p: asyncio.sleep(0), edit_params=params)
+
+
+# ---------------------------------------------------------------------------
+# Crop support
+# ---------------------------------------------------------------------------
+
+async def test_crop_produces_valid_output(landscape_clip, tmp_path):
+    """Cropping a 1280x720 video to a 640x360 region should still produce
+    display-resolution output (crop is pre-scale)."""
+    params = {"crop_x": 100, "crop_y": 50, "crop_w": 640, "crop_h": 360}
+    result, _ = await _run(landscape_clip, tmp_path, "crop-test", edit_params=params)
+    probe = _ffprobe(result["output_path"])
+    vs = _video_stream(probe)
+    assert vs["width"] == config_module.settings.display_width
+    assert vs["height"] == config_module.settings.display_height
+
+
+async def test_crop_still_image(still_image, tmp_path):
+    """Cropping a 640x480 image to 320x240 region produces valid output."""
+    params = {"crop_x": 50, "crop_y": 50, "crop_w": 320, "crop_h": 240}
+    result, _ = await _run(still_image, tmp_path, "crop-still-test", edit_params=params)
+    assert result["media_type"] == "image"
+    assert result["output_path"].exists()
+    probe = _ffprobe(result["output_path"])
+    vs = _video_stream(probe)
+    assert vs["width"] == config_module.settings.display_width
+    assert vs["height"] == config_module.settings.display_height
+
+
+async def test_trim_and_crop_together(landscape_clip, tmp_path):
+    """Both trim and crop applied simultaneously."""
+    params = {
+        "trim_start": 0.5, "trim_end": 3.0,
+        "crop_x": 0, "crop_y": 0, "crop_w": 640, "crop_h": 720,
+    }
+    result, _ = await _run(landscape_clip, tmp_path, "trim-crop-test", edit_params=params)
+    assert result["output_path"].exists()
+    probe = _ffprobe(result["output_path"])
+    duration = float(probe["format"]["duration"])
+    assert 2.0 < duration < 3.0

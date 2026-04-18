@@ -140,3 +140,41 @@ async def test_ready_clip_has_thumbnail_url(client):
     clips = (await client.get("/clips")).json()
     clip = next(c for c in clips if c["id"] == clip_id)
     assert clip["thumbnail"] == f"/clips/{clip_id}/thumbnail"
+
+
+# ---------------------------------------------------------------------------
+# Config endpoint
+# ---------------------------------------------------------------------------
+
+async def test_config_returns_display_settings(client):
+    r = await client.get("/config")
+    assert r.status_code == 200
+    data = r.json()
+    assert "display_width" in data
+    assert "display_height" in data
+    assert "max_clip_duration" in data
+    assert data["display_width"] == config_module.settings.display_width
+
+
+# ---------------------------------------------------------------------------
+# Upload with edit_params (trim/crop)
+# ---------------------------------------------------------------------------
+
+async def test_upload_with_edit_params(client):
+    """Upload with trim/crop form fields stores them and processes OK."""
+    r = await client.post(
+        "/clips",
+        files={"file": _fake_file()},
+        data={
+            "trim_start": "1.0",
+            "trim_end": "5.0",
+            "crop_x": "10",
+            "crop_y": "20",
+            "crop_w": "640",
+            "crop_h": "360",
+        },
+    )
+    assert r.status_code == 202
+    clip_id = r.json()["id"]
+    status = await _wait_for_terminal(client, clip_id)
+    assert status == "ready"

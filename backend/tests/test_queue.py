@@ -37,11 +37,11 @@ async def test_clips_process_one_at_a_time(client, monkeypatch):
 
     original = queue_module.process_clip
 
-    async def tracked(clip_id, raw_path, cb):
+    async def tracked(clip_id, raw_path, cb, **kwargs):
         current[0] += 1
         concurrent_peak[0] = max(concurrent_peak[0], current[0])
         try:
-            return await original(clip_id, raw_path, cb)
+            return await original(clip_id, raw_path, cb, **kwargs)
         finally:
             current[0] -= 1
 
@@ -65,9 +65,9 @@ async def test_clips_process_in_submission_order(client, monkeypatch):
 
     original = queue_module.process_clip
 
-    async def tracked(clip_id, raw_path, cb):
+    async def tracked(clip_id, raw_path, cb, **kwargs):
         started.append(clip_id)
-        return await original(clip_id, raw_path, cb)
+        return await original(clip_id, raw_path, cb, **kwargs)
 
     monkeypatch.setattr(queue_module, "process_clip", tracked)
 

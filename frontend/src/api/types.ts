@@ -35,3 +35,18 @@ export interface DisplaySchedule {
   on_time: string;
   off_time: string;
 }
+
+export interface DisplayConfig {
+  display_width: number;
+  display_height: number;
+  max_clip_duration: number;
+}
+
+export interface EditParams {
+  trimStart?: number;
+  trimEnd?: number;
+  cropX?: number;
+  cropY?: number;
+  cropW?: number;
+  cropH?: number;
+}

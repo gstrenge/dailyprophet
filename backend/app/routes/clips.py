@@ -1,10 +1,11 @@
+import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File, status
 from fastapi.responses import FileResponse
 
 from app.config import settings
@@ -18,6 +19,12 @@ router = APIRouter(prefix="/clips", tags=["clips"])
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def upload_clip(
     file: UploadFile = File(...),
+    trim_start: Optional[float] = Form(None),
+    trim_end: Optional[float] = Form(None),
+    crop_x: Optional[float] = Form(None),
+    crop_y: Optional[float] = Form(None),
+    crop_w: Optional[float] = Form(None),
+    crop_h: Optional[float] = Form(None),
     db=Depends(get_db),
 ):
     used = _get_used_bytes()
@@ -26,6 +33,21 @@ async def upload_clip(
             status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
             detail="Storage quota exceeded. Delete existing clips to free space.",
         )
+
+    edit_params: dict = {}
+    if trim_start is not None:
+        edit_params["trim_start"] = trim_start
+    if trim_end is not None:
+        edit_params["trim_end"] = trim_end
+    if crop_x is not None:
+        edit_params["crop_x"] = crop_x
+    if crop_y is not None:
+        edit_params["crop_y"] = crop_y
+    if crop_w is not None:
+        edit_params["crop_w"] = crop_w
+    if crop_h is not None:
+        edit_params["crop_h"] = crop_h
+    edit_json = json.dumps(edit_params) if edit_params else None
 
     clip_id = str(uuid.uuid4())
     raw_dir = settings.clips_dir / clip_id / "raw"
@@ -42,9 +64,9 @@ async def upload_clip(
     sort_order = (row["m"] or 0) + 1
 
     await db.execute(
-        """INSERT INTO clips (id, filename, status, progress, created_at, sort_order)
-           VALUES (?, ?, ?, 0, ?, ?)""",
-        (clip_id, dest.name, ClipStatus.QUEUED, created_at, sort_order),
+        """INSERT INTO clips (id, filename, status, progress, created_at, sort_order, edit_params)
+           VALUES (?, ?, ?, 0, ?, ?, ?)""",
+        (clip_id, dest.name, ClipStatus.QUEUED, created_at, sort_order, edit_json),
     )
     await db.commit()
 
