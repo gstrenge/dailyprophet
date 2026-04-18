@@ -14,11 +14,6 @@ from app.services.queue import enqueue
 
 router = APIRouter(prefix="/clips", tags=["clips"])
 
-ACCEPTED_TYPES = {
-    "video/mp4", "video/quicktime", "video/x-msvideo",
-    "video/webm", "image/jpeg", "image/png",
-}
-
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def upload_clip(
