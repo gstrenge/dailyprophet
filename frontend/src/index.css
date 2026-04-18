@@ -1,0 +1,57 @@
+/* Daily Prophet — global styles */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --ink: #1a1208;
+  --parchment: #f2e8d0;
+  --parchment-dark: #e0d0a8;
+  --parchment-mid: #ebe0c4;
+  --sepia: #8b6914;
+  --sepia-light: #c9a84c;
+  --rule: #5c4310;
+  --font-display: 'UnifrakturMaguntia', cursive;
+  --font-body: 'IM Fell English', Georgia, serif;
+  --font-smallcaps: 'IM Fell English SC', Georgia, serif;
+}
+
+html, body {
+  height: 100%;
+  background-color: var(--parchment-dark);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+#root {
+  min-height: 100%;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: normal;
+  letter-spacing: 0.01em;
+}
+
+a {
+  color: var(--sepia);
+  text-decoration: underline;
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+
+/* Decorative horizontal rule */
+.rule {
+  border: none;
+  border-top: 2px solid var(--rule);
+  box-shadow: 0 2px 0 var(--parchment-dark), 0 3px 0 var(--rule);
+  margin: 0.75rem 0;
+}
