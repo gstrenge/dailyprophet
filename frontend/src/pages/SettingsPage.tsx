@@ -2,6 +2,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { apiFetch } from "../api/client";
 import { DisplaySchedule } from "../api/types";
+import { CLIP_MS, SCHEDULE_POLL_MS } from "./KioskViewPage";
+
+/** Worst-case until the kiosk view picks up schedule / power changes (clip advance vs off-hours poll). */
+const DISPLAY_APPLY_LAG_SECONDS = Math.ceil(Math.max(CLIP_MS, SCHEDULE_POLL_MS) / 1000);
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -16,12 +20,21 @@ export default function SettingsPage() {
     queryKey: ["schedule"],
     queryFn: () => apiFetch("/display/schedule"),
   });
-  const [sched, setSched] = useState<DisplaySchedule>({ enabled: false, on_time: "08:00", off_time: "22:00" });
+  const [sched, setSched] = useState<DisplaySchedule>({ enabled: false, on_time: "08:00", off_time: "22:00", override: null });
   useEffect(() => { if (schedule) setSched(schedule); }, [schedule]);
 
   const schedMut = useMutation({
     mutationFn: (s: DisplaySchedule) =>
       apiFetch<DisplaySchedule>("/display/schedule", { method: "PUT", body: JSON.stringify(s) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule"] }),
+  });
+
+  const overrideMut = useMutation({
+    mutationFn: (value: string | null) =>
+      apiFetch<DisplaySchedule>("/display/override", {
+        method: "POST",
+        body: JSON.stringify({ override: value }),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule"] }),
   });
 
@@ -71,6 +84,9 @@ export default function SettingsPage() {
       {/* Display Schedule */}
       <section className="card">
         <h3 style={{ fontFamily: "var(--font-smallcaps)", marginBottom: "0.75rem" }}>Display Schedule</h3>
+        <p style={disclaimerStyle}>
+          The kiosk display may take up to {DISPLAY_APPLY_LAG_SECONDS} seconds to reflect saved changes.
+        </p>
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem", fontSize: "0.9rem" }}>
           <input
             type="checkbox"
@@ -94,9 +110,60 @@ export default function SettingsPage() {
         </button>
         {schedMut.isSuccess && <span style={{ marginLeft: "0.75rem", fontSize: "0.85rem", color: "#155724" }}>Saved.</span>}
       </section>
+
+      {/* Display Power Override — only when schedule is enabled */}
+      {schedule?.enabled && (
+        <section className="card">
+          <h3 style={{ fontFamily: "var(--font-smallcaps)", marginBottom: "0.75rem" }}>Display Power</h3>
+          <p style={{ fontSize: "0.85rem", marginBottom: "0.75rem", opacity: 0.8 }}>
+            {schedule.override === "on"
+              ? "Display is manually turned ON. Will resume schedule at next off-time."
+              : schedule.override === "off"
+                ? "Display is manually turned OFF. Will resume schedule at next on-time."
+                : "Following the schedule normally."}
+          </p>
+          <p style={disclaimerStyle}>
+            The kiosk display may take up to {DISPLAY_APPLY_LAG_SECONDS} seconds to reflect these controls.
+          </p>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <button
+              className="btn btn-primary"
+              disabled={schedule.override === "on" || overrideMut.isPending}
+              onClick={() => overrideMut.mutate("on")}
+            >
+              Turn On Now
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={schedule.override === "off" || overrideMut.isPending}
+              onClick={() => overrideMut.mutate("off")}
+            >
+              Turn Off Now
+            </button>
+            {schedule.override && (
+              <button
+                className="btn"
+                disabled={overrideMut.isPending}
+                onClick={() => overrideMut.mutate(null)}
+                style={{ border: "1px solid var(--rule)" }}
+              >
+                Resume Schedule
+              </button>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
+
+const disclaimerStyle: React.CSSProperties = {
+  fontSize: "0.8rem",
+  fontStyle: "italic",
+  opacity: 0.75,
+  marginBottom: "0.75rem",
+  lineHeight: 1.35,
+};
 
 const inputStyle: React.CSSProperties = {
   width: "100%",

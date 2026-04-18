@@ -34,6 +34,7 @@ export interface DisplaySchedule {
   enabled: boolean;
   on_time: string;
   off_time: string;
+  override: string | null;
 }
 
 export interface DisplayConfig {

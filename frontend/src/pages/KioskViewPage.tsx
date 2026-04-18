@@ -11,6 +11,7 @@ interface Schedule {
   enabled: boolean;
   on_time: string;
   off_time: string;
+  override: string | null;
 }
 
 interface ManifestEntry {
@@ -47,6 +48,8 @@ export default function KioskViewPage() {
   function isOn(): boolean {
     const s = schedule.current;
     if (!s || !s.enabled) return true;
+    if (s.override === "on") return true;
+    if (s.override === "off") return false;
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
     const [oH, oM] = s.on_time.split(":").map(Number);

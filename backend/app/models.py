@@ -41,6 +41,11 @@ class DisplaySchedule(BaseModel):
     enabled: bool
     on_time: str   # "HH:MM"
     off_time: str  # "HH:MM"
+    override: str | None = None  # "on", "off", or None
+
+
+class OverrideRequest(BaseModel):
+    override: str | None = None  # "on", "off", or None
 
 
 class ClipOrderRequest(BaseModel):

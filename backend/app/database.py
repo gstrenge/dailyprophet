@@ -72,3 +72,9 @@ async def _migrate():
     if "edit_params" not in columns:
         logger.info("Migrating: adding edit_params column to clips")
         await _db.execute("ALTER TABLE clips ADD COLUMN edit_params TEXT")
+
+    async with _db.execute("PRAGMA table_info(display_schedule)") as cur:
+        ds_columns = {row[1] for row in await cur.fetchall()}
+    if "override" not in ds_columns:
+        logger.info("Migrating: adding override column to display_schedule")
+        await _db.execute("ALTER TABLE display_schedule ADD COLUMN override TEXT")
