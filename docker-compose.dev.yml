@@ -17,14 +17,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_BASE=http://localhost:8000
+      - BACKEND_URL=http://backend:8000
     command: npm run dev -- --host 0.0.0.0
 
-  watchtower:
-    profiles:
-      - production
