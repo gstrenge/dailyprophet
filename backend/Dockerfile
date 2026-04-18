@@ -12,9 +12,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN mkdir -p /data/clips
 
-# --- dev stage (used by docker-compose.dev.yml) ---
+# --- dev stage (used by docker-compose.dev.yml and tests) ---
 FROM base AS dev
-# Source is mounted at runtime via volume; nothing else to copy.
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
 
 # --- production stage ---
 FROM base AS production
