@@ -99,3 +99,37 @@ def short_clip(tmp_path_factory) -> Path:
     path = tmp_path_factory.mktemp("fixtures") / "short.mp4"
     _generate_clip(path, 1280, 720, 1)
     return path
+
+
+# ---------------------------------------------------------------------------
+# HEIC fixtures — require heif-enc (from libheif-examples) in the container.
+# ---------------------------------------------------------------------------
+
+def _generate_heic_still(path: Path, width: int = 640, height: int = 480):
+    """Generate a still HEIC image: ffmpeg → JPEG → heif-enc → HEIC."""
+    tmp_jpg = path.with_suffix(".jpg")
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-f", "lavfi",
+            "-i", f"color=c=0x808080:size={width}x{height}:rate=1",
+            "-vframes", "1",
+            str(tmp_jpg),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["heif-enc", str(tmp_jpg), "-o", str(path)],
+        check=True,
+        capture_output=True,
+    )
+    tmp_jpg.unlink(missing_ok=True)
+
+
+@pytest.fixture(scope="session")
+def heic_still(tmp_path_factory) -> Path:
+    """A plain HEIC still image (no embedded video)."""
+    path = tmp_path_factory.mktemp("fixtures") / "still.heic"
+    _generate_heic_still(path)
+    return path

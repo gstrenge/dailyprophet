@@ -2,6 +2,7 @@
 Video processing pipeline.
 
 Transforms applied (in order):
+  0. Pre-process HEIC/HEIF files  (convert to JPEG so ffmpeg can read them)
   1. Resize + letterbox to target display resolution (black bars, never stretch)
   2. Normalize frame rate
   3. Daily Prophet sepia filter  (brownish-gray via classic sepia matrix + film grain)
@@ -18,10 +19,15 @@ Tunable via app.config.Settings:
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+HEIC_EXTENSIONS = {".heic", ".heif"}
 
 
 @dataclass
@@ -30,6 +36,43 @@ class _ProbeResult:
     width: int
     height: int
     fps: float
+
+
+# ---------------------------------------------------------------------------
+# HEIC pre-processing
+# ---------------------------------------------------------------------------
+
+async def _prepare_input(raw_path: Path, work_dir: Path) -> Path:
+    """If the input is HEIC/HEIF, convert to JPEG so ffmpeg can read it.
+
+    iOS strips the Live Photo video during web uploads, so HEIC files are
+    always still images.  Users should save Live Photos as MOV and upload
+    the video directly for motion content.
+    """
+    if raw_path.suffix.lower() not in HEIC_EXTENSIONS:
+        return raw_path
+
+    import shutil
+    if not shutil.which("heif-convert"):
+        raise ValueError(
+            "HEIC support requires heif-convert (libheif-examples). "
+            "Install it or rebuild the Docker image."
+        )
+
+    jpg_path = raw_path.with_suffix(".jpg")
+    proc = await asyncio.create_subprocess_exec(
+        "heif-convert", str(raw_path), str(jpg_path),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0 or not jpg_path.exists():
+        raise ValueError(
+            f"Cannot decode HEIC image: {stderr.decode().strip()}"
+        )
+
+    logger.info("Converted HEIC to JPEG: %s", jpg_path.name)
+    return jpg_path
 
 
 async def process_clip(
@@ -43,7 +86,9 @@ async def process_clip(
 
     await progress_callback(5)
 
-    info = await _probe(raw_path)
+    input_path = await _prepare_input(raw_path, out_dir)
+
+    info = await _probe(input_path)
     if info.duration > settings.max_clip_duration:
         raise ValueError(
             f"Clip is {info.duration:.1f}s; maximum allowed is {settings.max_clip_duration}s"
@@ -57,7 +102,7 @@ async def process_clip(
 
     cmd = [
         "ffmpeg", "-y",
-        "-i", str(raw_path),
+        "-i", str(input_path),
         "-filter_complex", filter_complex,
         "-map", "[out]",
         "-c:v", "libx264",

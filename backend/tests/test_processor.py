@@ -206,3 +206,19 @@ async def test_thumbnail_is_created(landscape_clip, tmp_path):
 async def test_duration_is_returned(landscape_clip, tmp_path):
     result, _ = await _run(landscape_clip, tmp_path, "duration-ret-test")
     assert result["duration"] == pytest.approx(5.0, abs=0.5)
+
+
+# ---------------------------------------------------------------------------
+# HEIC pre-processing (converts to JPEG, then pipeline takes over)
+# ---------------------------------------------------------------------------
+
+async def test_heic_is_converted_and_processed(heic_still, tmp_path):
+    """A HEIC image is converted to JPEG and processed through the pipeline."""
+    result, progress = await _run(heic_still, tmp_path, "heic-test")
+    assert result["output_path"].exists()
+    assert result["output_path"].stat().st_size > 0
+
+    probe = _ffprobe(result["output_path"])
+    vs = _video_stream(probe)
+    assert vs["codec_name"] == "h264"
+    assert 100 in progress
