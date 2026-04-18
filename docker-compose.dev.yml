@@ -1,0 +1,30 @@
+# Development overrides: hot-reload for backend, Vite dev server for frontend
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  backend:
+    build:
+      target: dev
+    volumes:
+      - ./backend:/app
+      - ./data/clips:/data/clips
+    environment:
+      - RELOAD=true
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_BASE=http://localhost:8000
+    command: npm run dev -- --host 0.0.0.0
+
+  watchtower:
+    profiles:
+      - production
