@@ -17,6 +17,7 @@ class Clip(BaseModel):
     status: ClipStatus
     progress: int
     duration: Optional[float] = None
+    media_type: str = "video"
     thumbnail: Optional[str] = None
     created_at: str
     sort_order: int

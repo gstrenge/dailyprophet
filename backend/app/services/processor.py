@@ -1,13 +1,18 @@
 """
-Video processing pipeline.
+Media processing pipeline — handles both video clips and still images.
 
-Transforms applied (in order):
+Video transforms (in order):
   0. Pre-process HEIC/HEIF files  (convert to JPEG so ffmpeg can read them)
   1. Resize + letterbox to target display resolution (black bars, never stretch)
   2. Normalize frame rate
   3. Daily Prophet sepia filter  (brownish-gray via classic sepia matrix + film grain)
   4. Loop-smoothing crossfade    (blends last N frames with first N for seamless loop)
   5. H.264 / MP4 encode, audio stripped
+
+Still-image transforms:
+  1. Resize + letterbox to target display resolution
+  2. Daily Prophet sepia filter
+  3. Output as JPEG
 
 Tunable via app.config.Settings:
   DISPLAY_WIDTH / DISPLAY_HEIGHT  — set to actual Pi display resolution
@@ -28,6 +33,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 HEIC_EXTENSIONS = {".heic", ".heif"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"} | HEIC_EXTENSIONS
 
 
 @dataclass
@@ -36,6 +42,7 @@ class _ProbeResult:
     width: int
     height: int
     fps: float
+    is_still: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -82,17 +89,73 @@ async def process_clip(
 ) -> dict:
     out_dir = settings.clips_dir / clip_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    output_path = out_dir / "processed.mp4"
 
     await progress_callback(5)
 
     input_path = await _prepare_input(raw_path, out_dir)
 
     info = await _probe(input_path)
+
+    if info.is_still:
+        logger.info("Input is a still image — processing as image")
+        return await _process_still(input_path, out_dir, progress_callback)
+
     if info.duration > settings.max_clip_duration:
         raise ValueError(
             f"Clip is {info.duration:.1f}s; maximum allowed is {settings.max_clip_duration}s"
         )
+
+    return await _process_video(input_path, info, out_dir, progress_callback)
+
+
+async def _process_still(
+    input_path: Path, out_dir: Path, progress_callback,
+) -> dict:
+    """Resize + letterbox + sepia a still image and save as JPEG."""
+    output_path = out_dir / "processed.jpg"
+    W = settings.display_width
+    H = settings.display_height
+
+    vf = ",".join([
+        f"scale={W}:{H}:force_original_aspect_ratio=decrease",
+        f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black",
+        "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
+        "noise=alls=8:allf=t+u",
+    ])
+
+    await progress_callback(10)
+
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-y",
+        "-i", str(input_path),
+        "-vf", vf,
+        "-frames:v", "1",
+        "-q:v", "2",
+        str(output_path),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+
+    if proc.returncode != 0 or not output_path.exists():
+        raise RuntimeError(
+            f"FFmpeg image processing failed:\n{stderr.decode()[-500:]}"
+        )
+
+    await progress_callback(100)
+    return {
+        "output_path": output_path,
+        "thumbnail_path": output_path,
+        "duration": None,
+        "media_type": "image",
+    }
+
+
+async def _process_video(
+    input_path: Path, info: _ProbeResult, out_dir: Path, progress_callback,
+) -> dict:
+    """Full video pipeline: resize, sepia, crossfade, encode."""
+    output_path = out_dir / "processed.mp4"
 
     await progress_callback(10)
 
@@ -152,6 +215,7 @@ async def process_clip(
         "output_path": output_path,
         "thumbnail_path": thumbnail_path,
         "duration": info.duration,
+        "media_type": "video",
     }
 
 
@@ -205,11 +269,6 @@ async def _probe(path: Path) -> _ProbeResult:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"ffprobe returned invalid output: {exc}") from exc
 
-    try:
-        duration = float(data["format"]["duration"])
-    except (KeyError, ValueError) as exc:
-        raise RuntimeError(f"Could not determine clip duration: {exc}") from exc
-
     video_stream = next(
         (s for s in data.get("streams", []) if s.get("codec_type") == "video"),
         None,
@@ -224,12 +283,23 @@ async def _probe(path: Path) -> _ProbeResult:
             fps = float(num) / max(1.0, float(den))
         except (ValueError, ZeroDivisionError):
             fps = float(settings.target_fps)
+        nb_frames = int(video_stream.get("nb_frames", 0) or 0)
     else:
         width = settings.display_width
         height = settings.display_height
         fps = float(settings.target_fps)
+        nb_frames = 0
 
-    return _ProbeResult(duration=duration, width=width, height=height, fps=fps)
+    try:
+        duration = float(data["format"]["duration"])
+    except (KeyError, ValueError):
+        duration = 0.0
+
+    is_still = nb_frames <= 1 or duration < 0.5
+
+    return _ProbeResult(
+        duration=duration, width=width, height=height, fps=fps, is_still=is_still,
+    )
 
 
 async def _extract_thumbnail(video_path: Path, out_dir: Path) -> Path | None:

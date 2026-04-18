@@ -26,7 +26,7 @@ async def _stub_processor(clip_id, raw_path, progress_callback):
     thumb = out_dir / "thumbnail.jpg"
     thumb.write_bytes(b"\xff\xd8stub")
     await progress_callback(100)
-    return {"output_path": out_dir / "processed.mp4", "thumbnail_path": thumb, "duration": 5.0}
+    return {"output_path": out_dir / "processed.mp4", "thumbnail_path": thumb, "duration": 5.0, "media_type": "video"}
 
 
 @pytest_asyncio.fixture
@@ -98,6 +98,28 @@ def short_clip(tmp_path_factory) -> Path:
     """1-second clip — short enough that crossfade should be skipped."""
     path = tmp_path_factory.mktemp("fixtures") / "short.mp4"
     _generate_clip(path, 1280, 720, 1)
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Still image fixture
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def still_image(tmp_path_factory) -> Path:
+    """A plain JPEG still image."""
+    path = tmp_path_factory.mktemp("fixtures") / "photo.jpg"
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-f", "lavfi",
+            "-i", "color=c=0x808080:size=640x480:rate=1",
+            "-vframes", "1",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
     return path
 
 

@@ -1,6 +1,10 @@
+import logging
+
 import aiosqlite
 from contextlib import asynccontextmanager
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 _db: aiosqlite.Connection | None = None
 
@@ -35,6 +39,7 @@ async def _create_tables():
             status      TEXT NOT NULL DEFAULT 'queued',
             progress    INTEGER NOT NULL DEFAULT 0,
             duration    REAL,
+            media_type  TEXT NOT NULL DEFAULT 'video',
             thumbnail   TEXT,
             created_at  TEXT NOT NULL,
             sort_order  INTEGER NOT NULL DEFAULT 0,
@@ -51,3 +56,15 @@ async def _create_tables():
         INSERT OR IGNORE INTO display_schedule (id, enabled, on_time, off_time)
         VALUES (1, 0, '08:00', '22:00');
     """)
+    await _migrate()
+
+
+async def _migrate():
+    """Add columns that may be missing from older databases."""
+    async with _db.execute("PRAGMA table_info(clips)") as cur:
+        columns = {row[1] for row in await cur.fetchall()}
+    if "media_type" not in columns:
+        logger.info("Migrating: adding media_type column to clips")
+        await _db.execute(
+            "ALTER TABLE clips ADD COLUMN media_type TEXT NOT NULL DEFAULT 'video'"
+        )

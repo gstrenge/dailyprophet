@@ -3,9 +3,19 @@ import UploadPage from "./pages/UploadPage";
 import QueuePage from "./pages/QueuePage";
 import SettingsPage from "./pages/SettingsPage";
 import KioskPage from "./pages/KioskPage";
+import KioskViewPage from "./pages/KioskViewPage";
 import "./App.css";
 
 export default function App() {
+  return (
+    <Routes>
+      <Route path="/kiosk-view" element={<KioskViewPage />} />
+      <Route path="*" element={<AppShell />} />
+    </Routes>
+  );
+}
+
+function AppShell() {
   return (
     <div className="app">
       <header className="masthead">
@@ -21,7 +31,7 @@ export default function App() {
           <span className="nav-sep">·</span>
           <NavLink to="/settings">Settings</NavLink>
           <span className="nav-sep">·</span>
-          <NavLink to="/kiosk">Kiosk Preview</NavLink>
+          <NavLink to="/kiosk">Kiosk</NavLink>
         </nav>
         <div className="masthead-rule" />
       </header>

@@ -209,16 +209,33 @@ async def test_duration_is_returned(landscape_clip, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# HEIC pre-processing (converts to JPEG, then pipeline takes over)
+# Still-image processing
 # ---------------------------------------------------------------------------
 
-async def test_heic_is_converted_and_processed(heic_still, tmp_path):
-    """A HEIC image is converted to JPEG and processed through the pipeline."""
-    result, progress = await _run(heic_still, tmp_path, "heic-test")
+async def test_still_image_produces_jpg(still_image, tmp_path):
+    """A still image should be processed as media_type 'image', not video."""
+    result, progress = await _run(still_image, tmp_path, "still-test")
+    assert result["media_type"] == "image"
+    assert result["output_path"].suffix == ".jpg"
     assert result["output_path"].exists()
     assert result["output_path"].stat().st_size > 0
+    assert 100 in progress
 
+
+async def test_still_image_has_correct_dimensions(still_image, tmp_path):
+    """Processed image should match display dimensions."""
+    result, _ = await _run(still_image, tmp_path, "still-dims-test")
     probe = _ffprobe(result["output_path"])
     vs = _video_stream(probe)
-    assert vs["codec_name"] == "h264"
+    import app.config as config_module
+    assert vs["width"] == config_module.settings.display_width
+    assert vs["height"] == config_module.settings.display_height
+
+
+async def test_heic_is_processed_as_image(heic_still, tmp_path):
+    """A HEIC image is converted to JPEG and processed as a still image."""
+    result, progress = await _run(heic_still, tmp_path, "heic-test")
+    assert result["media_type"] == "image"
+    assert result["output_path"].suffix == ".jpg"
+    assert result["output_path"].exists()
     assert 100 in progress

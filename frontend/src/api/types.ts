@@ -6,6 +6,7 @@ export interface Clip {
   status: ClipStatus;
   progress: number;
   duration: number | null;
+  media_type: "video" | "image";
   thumbnail: string | null;
   created_at: string;
   sort_order: number;

@@ -104,11 +104,12 @@ async def _process(clip_id: str):
         result = await process_clip(clip_id, raw_path, progress_callback)
         await db.execute(
             """UPDATE clips
-               SET status=?, progress=100, duration=?, thumbnail=?
+               SET status=?, progress=100, duration=?, media_type=?, thumbnail=?
                WHERE id=?""",
             (
                 ClipStatus.READY,
                 result.get("duration"),
+                result.get("media_type", "video"),
                 str(result["thumbnail_path"]) if result.get("thumbnail_path") else None,
                 clip_id,
             ),

@@ -114,12 +114,18 @@ async def get_thumbnail(clip_id: str, db=Depends(get_db)):
 
 @router.get("/{clip_id}/video")
 async def get_video(clip_id: str, db=Depends(get_db)):
-    async with db.execute("SELECT status FROM clips WHERE id=?", (clip_id,)) as cur:
+    async with db.execute("SELECT status, media_type FROM clips WHERE id=?", (clip_id,)) as cur:
         row = await cur.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Clip not found")
     if row["status"] != ClipStatus.READY:
         raise HTTPException(status_code=409, detail="Clip is not ready yet")
+
+    if row["media_type"] == "image":
+        img_path = settings.clips_dir / clip_id / "processed.jpg"
+        if not img_path.exists():
+            raise HTTPException(status_code=404, detail="Image file missing")
+        return FileResponse(img_path, media_type="image/jpeg")
 
     video_path = settings.clips_dir / clip_id / "processed.mp4"
     if not video_path.exists():
@@ -134,6 +140,7 @@ def _row_to_clip(row) -> Clip:
         status=row["status"],
         progress=row["progress"],
         duration=row["duration"],
+        media_type=row["media_type"],
         thumbnail=f"/clips/{row['id']}/thumbnail" if row["thumbnail"] else None,
         created_at=row["created_at"],
         sort_order=row["sort_order"],
