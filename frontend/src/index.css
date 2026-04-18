@@ -1,5 +1,39 @@
 /* Daily Prophet — global styles */
 
+/* Self-hosted fonts (offline/LAN safe) */
+
+@font-face {
+  font-family: 'BlackCastle';
+  src: url('./fonts/BlackCastle.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Headline';
+  src: url('./fonts/Headline.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Headline';
+  src: url('./fonts/Headline-Outline.ttf') format('truetype');
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MuggleNews';
+  src: url('./fonts/MuggleNews.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -14,9 +48,10 @@
   --sepia: #8b6914;
   --sepia-light: #c9a84c;
   --rule: #5c4310;
-  --font-display: 'UnifrakturMaguntia', cursive;
-  --font-body: 'IM Fell English', Georgia, serif;
-  --font-smallcaps: 'IM Fell English SC', Georgia, serif;
+  --font-display: 'Headline', Georgia, serif;
+  --font-masthead: 'BlackCastle', cursive;
+  --font-body: 'MuggleNews', Georgia, serif;
+  --font-smallcaps: 'MuggleNews', Georgia, serif;
 }
 
 html, body {

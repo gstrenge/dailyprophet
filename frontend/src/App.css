@@ -29,7 +29,7 @@
 }
 
 .masthead-title {
-  font-family: var(--font-display);
+  font-family: var(--font-masthead);
   font-size: clamp(2.4rem, 7vw, 4.5rem);
   color: var(--ink);
   line-height: 1;
