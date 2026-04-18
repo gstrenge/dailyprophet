@@ -5,7 +5,6 @@ from datetime import datetime
 
 
 class ClipStatus(StrEnum):
-    UPLOADING = "uploading"
     QUEUED = "queued"
     PROCESSING = "processing"
     READY = "ready"

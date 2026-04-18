@@ -1,4 +1,4 @@
-export type ClipStatus = "uploading" | "queued" | "processing" | "ready" | "failed";
+export type ClipStatus = "queued" | "processing" | "ready" | "failed";
 
 export interface Clip {
   id: string;

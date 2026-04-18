@@ -32,7 +32,7 @@ async def _create_tables():
         CREATE TABLE IF NOT EXISTS clips (
             id          TEXT PRIMARY KEY,
             filename    TEXT NOT NULL,
-            status      TEXT NOT NULL DEFAULT 'uploading',
+            status      TEXT NOT NULL DEFAULT 'queued',
             progress    INTEGER NOT NULL DEFAULT 0,
             duration    REAL,
             thumbnail   TEXT,
