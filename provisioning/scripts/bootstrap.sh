@@ -105,8 +105,20 @@ apply_sta_mode() {
   fi
 }
 
+_wait_for_wlan() {
+  local deadline=$((SECONDS + 30))
+  until nmcli -g STATE,DEVICE device 2>/dev/null | grep -q "disconnected:${WLAN_IF}\|available:${WLAN_IF}"; do
+    if [[ $SECONDS -ge $deadline ]]; then
+      log "Timed out waiting for ${WLAN_IF} to become available"
+      return 1
+    fi
+    sleep 1
+  done
+}
+
 cmd_boot() {
   load_defaults
+  _wait_for_wlan
   if [[ -f "${MARKER_STA}" ]] && nmcli con show "${STA_CON}" &>/dev/null; then
     log "Boot: STA profile found — connecting"
     nmcli con down "${AP_CON}" 2>/dev/null || true
