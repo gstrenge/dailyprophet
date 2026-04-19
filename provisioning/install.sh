@@ -41,6 +41,17 @@ if [[ ! -f /etc/default/dailyprophet-network ]]; then
   install -m 0644 "${SCRIPT_DIR}/templates/default-dailyprophet-network" /etc/default/dailyprophet-network
 fi
 
+# Splash screen
+SPLASH_SRC="${SCRIPT_DIR}/imgs/splash.png"
+SPLASH_DST="/usr/share/plymouth/themes/pix/splash.png"
+if [[ -f "${SPLASH_SRC}" ]]; then
+  install -m 0644 "${SPLASH_SRC}" "${SPLASH_DST}"
+  update-initramfs -u
+  echo "Splash screen installed"
+else
+  echo "WARNING: ${SPLASH_SRC} not found — skipping splash screen"
+fi
+
 systemctl daemon-reload
 
 systemctl enable dailyprophet-network-bootstrap.service
