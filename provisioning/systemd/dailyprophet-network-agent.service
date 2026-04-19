@@ -1,0 +1,18 @@
+[Unit]
+Description=Daily Prophet network agent (localhost Wi-Fi API)
+Documentation=file:/usr/local/lib/dailyprophet/network/agent.py
+After=network.target dailyprophet-network-bootstrap.service
+Wants=dailyprophet-network-bootstrap.service
+
+[Service]
+EnvironmentFile=-/etc/default/dailyprophet-network
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/dailyprophet/network/agent.py
+Restart=on-failure
+RestartSec=3
+# Hardening (still needs root for bootstrap / wpa)
+NoNewPrivileges=false
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
