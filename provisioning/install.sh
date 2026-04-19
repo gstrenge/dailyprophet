@@ -8,6 +8,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 
+REPO_DIR="$(dirname "${SCRIPT_DIR}")"
+readonly REPO_DIR
+
 KIOSK_USER="pi"
 
 if [[ "$(id -u)" -ne 0 ]]; then
@@ -27,7 +30,8 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y --no-install-recommends \
   avahi-daemon rfkill \
-  xorg openbox firefox-esr lightdm unclutter
+  xorg openbox firefox-esr lightdm unclutter \
+  curl ca-certificates
 
 # Ensure Wi-Fi radio is unblocked
 rfkill unblock wifi 2>/dev/null || true
@@ -152,6 +156,32 @@ Section "OutputClass"
 EndSection
 EOF
 
+# ── Docker ───────────────────────────────────────────────────────────────────
+
+if ! command -v docker &>/dev/null; then
+  echo "Installing Docker..."
+  curl -fsSL https://get.docker.com | sh
+else
+  echo "Docker already installed: $(docker --version)"
+fi
+
+# Add kiosk user to docker group so they can manage containers without sudo
+usermod -aG docker "${KIOSK_USER}"
+
+systemctl enable docker
+systemctl start docker
+
+# ── Docker Compose services ───────────────────────────────────────────────────
+
+# Ensure the clips bind-mount directory exists with correct ownership before
+# compose creates it as root.
+install -d -m 0755 "${REPO_DIR}/data/clips"
+chown "${KIOSK_USER}:${KIOSK_USER}" "${REPO_DIR}/data"
+chown "${KIOSK_USER}:${KIOSK_USER}" "${REPO_DIR}/data/clips"
+
+echo "Building and starting Docker Compose services..."
+docker compose -f "${REPO_DIR}/docker-compose.yml" up --build -d
+
 # ── Finalise ─────────────────────────────────────────────────────────────────
 
 systemctl daemon-reload
@@ -163,6 +193,9 @@ systemctl enable avahi-daemon.service
 echo ""
 echo "Install finished. Reboot recommended:"
 echo "  sudo reboot"
+echo ""
+echo "Docker services are running. Check status with:"
+echo "  docker compose -f ${REPO_DIR}/docker-compose.yml ps"
 echo ""
 echo "After reboot: setup AP = DailyProphet-Setup (when no STA profile saved),"
 echo "agent on 127.0.0.1:18765 — see provisioning/README.md"

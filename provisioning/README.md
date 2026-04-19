@@ -31,7 +31,7 @@ sudo reboot
 
 ### What it installs
 
-**Packages:** `avahi-daemon` `rfkill` `xorg` `openbox` `firefox-esr` `lightdm` `unclutter`
+**Packages:** `avahi-daemon` `rfkill` `xorg` `openbox` `firefox-esr` `lightdm` `unclutter` `curl` `ca-certificates`
 
 **Network bootstrap**
 - Scripts installed to `/usr/local/lib/dailyprophet/network/`
@@ -51,7 +51,9 @@ sudo reboot
 
 **Splash screen:** Copies `imgs/splash.png` to the Plymouth pix theme if Plymouth is installed. Skipped automatically on Lite (Plymouth not present by default).
 
-**Services enabled:** `dailyprophet-network-bootstrap` `dailyprophet-network-agent` `avahi-daemon` `lightdm`
+**Docker:** Installs Docker CE via the official convenience script (`get.docker.com`) if not already present, adds `pi` to the `docker` group, and runs `docker compose up --build -d` from the repo root. Creates `data/clips/` in the repo root (the backend bind-mount) before starting so it's owned by `pi` rather than root.
+
+**Services enabled:** `dailyprophet-network-bootstrap` `dailyprophet-network-agent` `avahi-daemon` `lightdm` `docker`
 
 ---
 
@@ -79,8 +81,11 @@ The backend Docker container calls `POST /wifi` to hand off home Wi-Fi credentia
 ## Post-install verification
 
 ```bash
-# All four should be "enabled"
-systemctl is-enabled dailyprophet-network-bootstrap dailyprophet-network-agent lightdm avahi-daemon
+# All should be "enabled"
+systemctl is-enabled dailyprophet-network-bootstrap dailyprophet-network-agent lightdm avahi-daemon docker
+
+# Docker services are up
+docker compose -f ~/dailyprophet/docker-compose.yml ps
 
 # Network agent is responding
 curl http://127.0.0.1:18765/status
