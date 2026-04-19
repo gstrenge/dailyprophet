@@ -57,12 +57,14 @@ echo "Hostname set to dailyprophet"
 
 SPLASH_SRC="${SCRIPT_DIR}/imgs/splash.png"
 SPLASH_DST="/usr/share/plymouth/themes/pix/splash.png"
-if [[ -f "${SPLASH_SRC}" ]]; then
+if [[ ! -f "${SPLASH_SRC}" ]]; then
+  echo "WARNING: ${SPLASH_SRC} not found — skipping splash screen"
+elif [[ ! -d "$(dirname "${SPLASH_DST}")" ]]; then
+  echo "WARNING: Plymouth pix theme not installed — skipping splash screen"
+else
   install -m 0644 "${SPLASH_SRC}" "${SPLASH_DST}"
   update-initramfs -u
   echo "Splash screen installed"
-else
-  echo "WARNING: ${SPLASH_SRC} not found — skipping splash screen"
 fi
 
 # ── Kiosk display ────────────────────────────────────────────────────────────
@@ -117,6 +119,38 @@ cat > /usr/lib/firefox-esr/distribution/policies.json << 'EOF'
 EOF
 
 systemctl enable lightdm
+
+# ── Display: Xorg permissions + Pi 5 DRM card selection ──────────────────────
+
+# Allow LightDM-launched X to run as pi with DRM master rights.
+# Without this file the Xorg shim denies non-root launch and exits silently.
+install -m 0644 /dev/stdin /etc/X11/Xwrapper.config << 'EOF'
+allowed_users=anybody
+needs_root_rights=yes
+EOF
+
+# Pi 5 exposes two DRM nodes: card0 = v3d (renderer, no connectors),
+# card1 = vc4-drm (display controller). Xorg's modesetting driver walks them
+# in order and gives up at card0. OutputClass + MatchDriver "vc4" + kmsdev
+# pins it to the right card via the stable by-path symlink (immune to
+# card0/card1 renumbering across kernel versions).
+#
+# TODO DSI: when switching from HDMI to a DSI ribbon-cable touchscreen the
+# card selection below still works (same vc4-drm card), but DSI panels have
+# no EDID so Xorg cannot auto-detect resolution. You will need to add a
+# Monitor section with an explicit Modeline and Option "UseEdidFreqs" "false".
+install -d -m 0755 /etc/X11/xorg.conf.d
+# Remove any stale config from previous debug sessions
+rm -f /etc/X11/xorg.conf.d/99-modesetting.conf
+install -m 0644 /dev/stdin /etc/X11/xorg.conf.d/99-dailyprophet.conf << 'EOF'
+Section "OutputClass"
+    Identifier  "vc4"
+    MatchDriver "vc4"
+    Driver      "modesetting"
+    Option      "PrimaryGPU" "true"
+    Option      "kmsdev"     "/dev/dri/by-path/platform-axi:gpu-card"
+EndSection
+EOF
 
 # ── Finalise ─────────────────────────────────────────────────────────────────
 
