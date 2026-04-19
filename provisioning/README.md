@@ -117,6 +117,17 @@ sudo systemctl restart avahi-daemon
 
 **TODO:** Add to `install.sh`.
 
+### wpa_supplicant conflict (wlan0 unavailable)
+
+Pi OS Lite ships with `wpa_supplicant.service` enabled as a standalone daemon. NetworkManager manages its own wpa_supplicant instance over D-Bus — a second standalone instance racing for `wlan0` causes NM to mark it `unavailable`, leaving the rfkill soft-block stuck on. `install.sh` disables the standalone unit (but leaves it unmasked so NM can still D-Bus activate it).
+
+If you encounter `wlan0: unavailable` on a Pi that wasn't provisioned with `install.sh`:
+```bash
+sudo systemctl disable wpa_supplicant
+sudo systemctl stop wpa_supplicant
+sudo systemctl restart NetworkManager
+```
+
 ### LightDM accountsservice warnings
 
 LightDM logs `Error getting user list from org.freedesktop.Accounts` and `Could not enumerate user data directory /var/lib/lightdm/data`. These are non-fatal — autologin works. Caused by `accountsservice` not being installed on Lite.

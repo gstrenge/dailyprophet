@@ -25,6 +25,14 @@ if ! systemctl is-active --quiet NetworkManager; then
   exit 1
 fi
 
+# Pi OS Lite ships with wpa_supplicant.service enabled as a standalone daemon.
+# NetworkManager manages its own wpa_supplicant instance via D-Bus — a second
+# standalone instance racing for wlan0 causes NM to mark the interface
+# unavailable and the soft-block to persist across reboots.
+# Disable auto-start but leave the unit unmasked so NM can D-Bus activate it.
+systemctl disable wpa_supplicant 2>/dev/null || true
+systemctl stop wpa_supplicant 2>/dev/null || true
+
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -y
@@ -123,6 +131,7 @@ cat > /usr/lib/firefox-esr/distribution/policies.json << 'EOF'
 EOF
 
 systemctl enable lightdm
+systemctl set-default graphical.target
 
 # ── Display: Xorg permissions + Pi 5 DRM card selection ──────────────────────
 
