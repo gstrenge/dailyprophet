@@ -1,7 +1,5 @@
 # /etc/default/dailyprophet-network — variables for bootstrap + agent
 WLAN_IF=wlan0
-# ISO 3166-1 alpha-2 for wpa_supplicant / hostapd regulatory domain
-WIFI_COUNTRY=US
 
 # Localhost HTTP agent (override if needed)
 DAILYPROPHET_NET_AGENT_ADDR=127.0.0.1

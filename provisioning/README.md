@@ -4,21 +4,21 @@ This directory contains **host-side** files for §2.1 (Network Bootstrap): first
 
 ## Intended environment
 
-- **Raspberry Pi OS Lite** (or similar) with **`dhcpcd`** managing interfaces and **`wpa_supplicant@wlan0`** for client mode.
+- **Raspberry Pi OS Bookworm Lite** (or similar) with **NetworkManager** managing interfaces.
 - Single Wi‑Fi interface, default **`wlan0`** (override with `/etc/default/dailyprophet-network`).
-- **Not** designed for images that use **NetworkManager** for `wlan0` without removing/disabling it first — mixing stacks will conflict. See “NetworkManager” below.
+- **Not** designed for images that use **dhcpcd + wpa_supplicant** — if your image uses dhcpcd, migrate to NetworkManager first or use a fresh Bookworm image.
 
 ## What gets installed
 
 | Piece | Role |
 |--------|------|
-| `hostapd` | Setup SSID **`DailyProphet-Setup`** (WPA2 passphrase **`dailyprophet-setup`**) when no home Wi‑Fi is configured |
-| `dnsmasq` | DHCP for clients on the setup AP (`192.168.4.0/24`) |
-| `avahi-daemon` | mDNS (`dailyprophet.local`) — host service; advertise on whatever interfaces are up |
-| `dailyprophet-network-bootstrap.service` | **Oneshot** on boot: choose AP vs STA, lay down configs, start/stop `hostapd` / `wpa_supplicant` as needed |
-| `dailyprophet-network-agent.service` | **Long-running** HTTP on **`127.0.0.1:18765`** — `POST /wifi` for credentials (same JSON shape as the backend stub) |
+| NM AP profile `dp-ap` | Setup SSID **`DailyProphet-Setup`** (WPA2 passphrase **`dailyprophet-setup`**), static IP `192.168.4.1/24`, built-in DHCP via NM shared mode |
+| NM STA profile `dp-sta` | Created on demand when credentials are submitted; auto-connect priority 10 |
+| `avahi-daemon` | mDNS (`dailyprophet.local`) on all active interfaces |
+| `dailyprophet-network-bootstrap.service` | **Oneshot** on boot: choose AP vs STA, activate the right NM profile |
+| `dailyprophet-network-agent.service` | **Long-running** HTTP on **`127.0.0.1:18765`** — `POST /wifi` for credentials |
 
-State and generated configs live under **`/var/lib/dailyprophet/`**.
+State lives under **`/var/lib/dailyprophet/`**.
 
 ## Quick install
 
@@ -30,37 +30,40 @@ sudo ./install.sh
 sudo reboot   # recommended after first install
 ```
 
+`install.sh` will exit with an error if NetworkManager is not active.
+
 ## Localhost agent API (for Docker backend)
 
-Bind address: **`127.0.0.1:18765`** (override with `DAILYPROPHET_NET_AGENT_ADDR` / `DAILYPROPHET_NET_AGENT_PORT` in the agent’s `Environment=` file or drop-in).
+Bind address: **`127.0.0.1:18765`** (override with `DAILYPROPHET_NET_AGENT_ADDR` / `DAILYPROPHET_NET_AGENT_PORT` in `/etc/default/dailyprophet-network`).
 
 | Method | Path | Body | Notes |
 |--------|------|------|--------|
 | `GET` | `/status` | — | JSON: `mode`, `wlan`, `ssid`, `message` |
-| `POST` | `/wifi` | `{"ssid":"...","password":"..."}` | Writes STA config, runs `bootstrap.sh client`; returns JSON |
+| `POST` | `/wifi` | `{"ssid":"...","password":"..."}` | Writes creds, runs `bootstrap.sh client`; returns JSON. On auth failure: 500 + reverts to AP. |
 
-Phase 2 backend: replace the Wi‑Fi stub with an HTTP client to `http://127.0.0.1:18765/wifi` (or mount `host` network and same URL).
+Phase 2 backend: replace the Wi‑Fi stub with an HTTP client to `http://127.0.0.1:18765/wifi`.
+
+## Credential flow
+
+1. `POST /wifi` → agent writes `/var/lib/dailyprophet/sta.creds` (mode 0600, root only).
+2. Agent calls `bootstrap.sh client`.
+3. bootstrap reads + deletes the creds file, creates the `dp-sta` NM profile, calls `nmcli --wait 40 con up dp-sta`.
+4. On success: sets `/var/lib/dailyprophet/sta.enabled` marker, returns 200.
+5. On failure (bad password, SSID not found, timeout): deletes `dp-sta`, restores `dp-ap`, returns 500 with `"message": "Wi-Fi connection failed; reverted to setup AP"`.
 
 ## mDNS
 
-**`avahi-daemon`** is enabled by the installer. Ensure the Pi hostname is **`dailyprophet`** (or your chosen name) via `raspi-config` / `/etc/hostname` so `dailyprophet.local` matches the SPEC.
-
-## NetworkManager
-
-If your image uses **NetworkManager** on `wlan0`, either:
-
-- migrate this device to **dhcpcd + wpa_supplicant** before using these scripts, or  
-- replace the bootstrap logic with **nmcli** profiles (not included here).
+**`avahi-daemon`** is enabled by the installer. Ensure the Pi hostname is **`dailyprophet`** via `raspi-config` → System → Hostname so `dailyprophet.local` resolves correctly.
 
 ## Manual recovery
 
-- **AP mode** with no credentials: connect to `DailyProphet-Setup`, open the web UI, submit Wi‑Fi.  
-- **Broken STA config**: remove `/var/lib/dailyprophet/sta.enabled`, reboot → bootstrap returns to AP mode (or run `sudo /usr/local/lib/dailyprophet/network/bootstrap.sh ap`).
+- **AP mode with no credentials**: connect to `DailyProphet-Setup` (password `dailyprophet-setup`), submit Wi‑Fi via web UI.
+- **Broken STA config**: `sudo rm -f /var/lib/dailyprophet/sta.enabled && sudo /usr/local/lib/dailyprophet/network/bootstrap.sh ap` — or reboot, bootstrap will fall back to AP automatically since the marker is gone.
 
 ## Files
 
-- `install.sh` — installs packages, copies scripts/units/templates, `daemon-reload`, enables units  
-- `scripts/bootstrap.sh` — AP vs client switching  
-- `scripts/agent.py` — localhost HTTP API (stdlib only)  
-- `templates/` — `hostapd`, `dnsmasq`, `dhcpcd` snippets  
-- `systemd/` — unit files  
+- `install.sh` — installs packages, copies scripts/units/template, `daemon-reload`, enables units
+- `scripts/bootstrap.sh` — AP vs STA switching via nmcli
+- `scripts/agent.py` — localhost HTTP API (stdlib only)
+- `templates/default-dailyprophet-network` — `/etc/default/dailyprophet-network` defaults
+- `systemd/` — unit files

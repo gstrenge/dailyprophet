@@ -18,13 +18,15 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 STATE_DIR = Path("/var/lib/dailyprophet")
-FRAGMENT = STATE_DIR / "sta.network.fragment"
+CREDS_FILE = STATE_DIR / "sta.creds"
 MARKER_STA = STATE_DIR / "sta.enabled"
 BOOTSTRAP = "/usr/local/lib/dailyprophet/network/bootstrap.sh"
 
 ADDR = os.environ.get("DAILYPROPHET_NET_AGENT_ADDR", "127.0.0.1")
 PORT = int(os.environ.get("DAILYPROPHET_NET_AGENT_PORT", "18765"))
-MAX_BODY = 32768
+MAX_BODY = 4096
+# bootstrap blocks up to 40 s (STA_TIMEOUT) + system overhead
+BOOTSTRAP_TIMEOUT = 60
 
 
 def _wlan() -> str:
@@ -41,39 +43,31 @@ def _wlan() -> str:
 
 
 def _mode() -> str:
-    if MARKER_STA.is_file() and Path(f"/etc/wpa_supplicant/wpa_supplicant-{_wlan()}.conf").is_file():
-        return "client"
-    return "ap"
+    return "client" if MARKER_STA.is_file() else "ap"
 
 
 def _ssid_hint() -> str | None:
-    p = Path(f"/etc/wpa_supplicant/wpa_supplicant-{_wlan()}.conf")
-    if not p.is_file():
+    if not MARKER_STA.is_file():
         return None
-    for line in p.read_text().splitlines():
-        if "ssid=" in line and not line.strip().startswith("#"):
-            raw = line.split("ssid=", 1)[1].strip()
-            return raw.strip('"').strip("'")
+    try:
+        r = subprocess.run(
+            ["nmcli", "-t", "-f", "802-11-wireless.ssid", "con", "show", "dp-sta"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        for line in r.stdout.splitlines():
+            if line.startswith("802-11-wireless.ssid:"):
+                return line.split(":", 1)[1].strip() or None
+    except Exception:
+        pass
     return None
 
 
-def _write_fragment(ssid: str, password: str) -> None:
-    r = subprocess.run(
-        ["wpa_passphrase", ssid, password],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    lines: list[str] = []
-    for line in r.stdout.splitlines():
-        s = line.strip()
-        if s.startswith("#"):
-            continue
-        lines.append(line)
-    body = "\n".join(lines).strip() + "\n"
+def _write_creds(ssid: str, password: str) -> None:
     STATE_DIR.mkdir(parents=True, mode=0o750, exist_ok=True)
-    FRAGMENT.write_text(body, encoding="utf-8")
-    os.chmod(FRAGMENT, 0o600)
+    CREDS_FILE.write_text(f"{ssid}\n{password}\n", encoding="utf-8")
+    os.chmod(CREDS_FILE, 0o600)
 
 
 def _run_bootstrap_client() -> tuple[int, str]:
@@ -81,6 +75,7 @@ def _run_bootstrap_client() -> tuple[int, str]:
         [BOOTSTRAP, "client"],
         capture_output=True,
         text=True,
+        timeout=BOOTSTRAP_TIMEOUT,
     )
     out = (p.stdout or "") + (p.stderr or "")
     return p.returncode, out.strip()
@@ -101,8 +96,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self) -> None:
-        path = urlparse(self.path).path
-        if path == "/status":
+        if urlparse(self.path).path == "/status":
             self._json(
                 200,
                 {
@@ -116,34 +110,30 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not_found"})
 
     def do_POST(self) -> None:
-        path = urlparse(self.path).path
-        if path != "/wifi":
+        if urlparse(self.path).path != "/wifi":
             self._json(404, {"error": "not_found"})
             return
+
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > MAX_BODY:
             self._json(413, {"error": "body_too_large"})
             return
-        raw = self.rfile.read(length)
+
         try:
-            body = json.loads(raw.decode("utf-8"))
-        except json.JSONDecodeError:
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
             self._json(400, {"error": "invalid_json"})
             return
+
         ssid = str(body.get("ssid", "")).strip()
         password = str(body.get("password", ""))
+
         if not ssid:
             self._json(400, {"error": "ssid_required"})
             return
 
         try:
-            _write_fragment(ssid, password)
-        except subprocess.CalledProcessError as e:
-            self._json(
-                500,
-                {"status": "error", "message": f"wpa_passphrase failed: {e.stderr or e}"},
-            )
-            return
+            _write_creds(ssid, password)
         except OSError as e:
             self._json(500, {"status": "error", "message": str(e)})
             return
@@ -154,7 +144,7 @@ class Handler(BaseHTTPRequestHandler):
                 500,
                 {
                     "status": "error",
-                    "message": "bootstrap client failed",
+                    "message": "Wi-Fi connection failed; reverted to setup AP",
                     "detail": log[-4000:],
                 },
             )

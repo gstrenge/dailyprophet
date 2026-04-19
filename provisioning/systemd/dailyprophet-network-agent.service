@@ -1,7 +1,7 @@
 [Unit]
 Description=Daily Prophet network agent (localhost Wi-Fi API)
 Documentation=file:/usr/local/lib/dailyprophet/network/agent.py
-After=network.target dailyprophet-network-bootstrap.service
+After=NetworkManager.service dailyprophet-network-bootstrap.service
 Wants=dailyprophet-network-bootstrap.service
 
 [Service]

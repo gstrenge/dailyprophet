@@ -1,16 +1,16 @@
 [Unit]
 Description=Daily Prophet Wi-Fi bootstrap (AP vs home STA)
 Documentation=file:/usr/local/lib/dailyprophet/network/bootstrap.sh
-DefaultDependencies=no
-After=local-fs.target
-Before=network-pre.target
-# If your Wi-Fi interface is not wlan0, set WLAN_IF in /etc/default/dailyprophet-network
-# and optionally add After=sys-subsystem-net-devices-<iface>.device via a drop-in.
+After=NetworkManager.service
+Wants=NetworkManager.service
+# Runs before network.target so AP is up when multi-user services start
+Before=network.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/local/lib/dailyprophet/network/bootstrap.sh boot
+TimeoutStartSec=90
 
 [Install]
-WantedBy=network-pre.target
+WantedBy=multi-user.target
