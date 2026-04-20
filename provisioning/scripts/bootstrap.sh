@@ -105,11 +105,21 @@ apply_sta_mode() {
   fi
 }
 
+# Wait until NetworkManager has fully taken over wlan0 (supplicant attached,
+# state is disconnected or connected — not unavailable/unmanaged). NM exposes
+# the interface as "unavailable" the moment the kernel creates it, but nmcli
+# con up will fail with "No suitable device" until supplicant is ready. On
+# Pi 5 + Trixie Lite this gap is ~300 ms after NM's "Started" line.
 _wait_for_wlan() {
-  local deadline=$((SECONDS + 30))
-  until nmcli -g STATE,DEVICE device 2>/dev/null | grep -q "disconnected:${WLAN_IF}\|available:${WLAN_IF}"; do
+  local deadline=$((SECONDS + 30)) state
+  while :; do
+    state=$(nmcli -t -f DEVICE,STATE device 2>/dev/null \
+              | awk -F: -v d="${WLAN_IF}" '$1==d{print $2}')
+    case "${state}" in
+      disconnected|connected) return 0 ;;
+    esac
     if [[ $SECONDS -ge $deadline ]]; then
-      log "Timed out waiting for ${WLAN_IF} to become available"
+      log "Timed out waiting for ${WLAN_IF} (last state: ${state:-missing})"
       return 1
     fi
     sleep 1
@@ -133,6 +143,7 @@ cmd_boot() {
   else
     log "Boot: no STA profile — AP mode"
     rm -f "${MARKER_STA}"
+    nmcli con delete "${STA_CON}" 2>/dev/null || true
     apply_ap_mode
   fi
 }
