@@ -59,9 +59,36 @@ sudo reboot
 
 ---
 
+## Network agent bind address and Docker networking
+
+The agent binds to `172.17.0.1` by default — the Docker bridge gateway on the Pi host. This lets the backend container reach the agent while keeping it unreachable from `wlan0` and `eth0` (i.e. not exposed to any Wi-Fi client or LAN device).
+
+```
+┌─── Pi (host) ──────────────────────────────────────────────┐
+│  127.0.0.1        ← loopback (agent NOT here)              │
+│  192.168.4.1      ← DailyProphet-Setup AP  (wlan0, AP mode)│
+│  <home-wifi-ip>   ← home network           (wlan0, STA mode)│
+│                                                             │
+│  172.17.0.1  ← Docker bridge gateway  ← agent listens here │
+│       │                                                     │
+│  ┌────┴──────────────────────────────────────────────────┐  │
+│  │  backend container (172.17.0.x)                       │  │
+│  │                                                       │  │
+│  │  host.docker.internal → 172.17.0.1                   │  │
+│  │  POST http://host.docker.internal:18765/wifi  ───────►│  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+`host.docker.internal` is injected into the container's `/etc/hosts` via `extra_hosts: host-gateway` in `docker-compose.yml`. The agent address is configured in `/etc/default/dailyprophet-network`; the backend reads it via the `DAILYPROPHET_NET_AGENT_ADDR` env var set in `docker-compose.yml`.
+
+`172.17.0.1` is Docker's default bridge gateway and is stable as long as the default bridge network is not reconfigured.
+
+---
+
 ## Network agent API
 
-Bind address: `127.0.0.1:18765` (override with `DAILYPROPHET_NET_AGENT_ADDR` / `DAILYPROPHET_NET_AGENT_PORT` in `/etc/default/dailyprophet-network`).
+Bind address: `172.17.0.1:18765` (override with `DAILYPROPHET_NET_AGENT_ADDR` / `DAILYPROPHET_NET_AGENT_PORT` in `/etc/default/dailyprophet-network`).
 
 | Method | Path | Body | Response |
 |---|---|---|---|

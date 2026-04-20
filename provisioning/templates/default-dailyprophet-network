@@ -1,6 +1,8 @@
 # /etc/default/dailyprophet-network — variables for bootstrap + agent
 WLAN_IF=wlan0
 
-# Localhost HTTP agent (override if needed)
-DAILYPROPHET_NET_AGENT_ADDR=127.0.0.1
+# HTTP agent bind address. 172.17.0.1 = default Docker bridge gateway, so the
+# backend container can reach the agent while it stays unreachable from wlan0/eth0.
+# Use 127.0.0.1 if running the backend outside Docker.
+DAILYPROPHET_NET_AGENT_ADDR=172.17.0.1
 DAILYPROPHET_NET_AGENT_PORT=18765
