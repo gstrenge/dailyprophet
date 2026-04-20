@@ -14,6 +14,7 @@ export default function SettingsPage() {
   const [ssid, setSsid] = useState("");
   const [password, setPassword] = useState("");
   const [wifiMsg, setWifiMsg] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   // Display schedule
   const { data: schedule } = useQuery<DisplaySchedule>({
@@ -38,14 +39,31 @@ export default function SettingsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule"] }),
   });
 
-  async function handleWifi(e: React.FormEvent) {
+  function handleWifi(e: React.FormEvent) {
     e.preventDefault();
-    try {
-      await apiFetch("/wifi", { method: "POST", body: JSON.stringify({ ssid, password }) });
-      setWifiMsg("Credentials accepted — connecting…");
-    } catch (err: any) {
+    setWifiMsg(null);
+
+    // On success the Pi tears down the setup AP before responding, so this
+    // fetch will never resolve — only reject (bad password, agent down, etc.).
+    // Start the countdown immediately; let a rejection override it if it comes.
+    let remaining = 15;
+    setCountdown(remaining);
+    const timer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(timer);
+        setCountdown(null);
+        setWifiMsg("Reconnect your device to your home Wi-Fi, then visit dailyprophet.local");
+      } else {
+        setCountdown(remaining);
+      }
+    }, 1000);
+
+    apiFetch("/wifi", { method: "POST", body: JSON.stringify({ ssid, password }) }).catch((err: any) => {
+      clearInterval(timer);
+      setCountdown(null);
       setWifiMsg(`Error: ${err.message}`);
-    }
+    });
   }
 
   return (
@@ -76,8 +94,15 @@ export default function SettingsPage() {
               style={inputStyle}
             />
           </div>
-          <button className="btn btn-primary" type="submit">Save Network Credentials</button>
-          {wifiMsg && <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", fontStyle: "italic" }}>{wifiMsg}</p>}
+          <button className="btn btn-primary" type="submit" disabled={countdown !== null}>Save Network Credentials</button>
+          {countdown !== null && (
+            <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", fontStyle: "italic" }}>
+              Connecting… reconnect to your home Wi-Fi in {countdown}s
+            </p>
+          )}
+          {wifiMsg && countdown === null && (
+            <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", fontStyle: "italic" }}>{wifiMsg}</p>
+          )}
         </form>
       </section>
 

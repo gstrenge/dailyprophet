@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     max_clip_duration: float = 15.0    # seconds; longer uploads are rejected
     crossfade_duration: float = 0.5    # seconds blended at loop boundary
 
+    # Network agent (dailyprophet-network-agent.service on the Pi)
+    # Override via DAILYPROPHET_NET_AGENT_ADDR / DAILYPROPHET_NET_AGENT_PORT env vars.
+    dailyprophet_net_agent_addr: str = "127.0.0.1"
+    dailyprophet_net_agent_port: int = 18765
+
+    @property
+    def net_agent_base_url(self) -> str:
+        return f"http://{self.dailyprophet_net_agent_addr}:{self.dailyprophet_net_agent_port}"
+
     @property
     def db_path(self) -> Path:
         return self.clips_dir / "db.sqlite3"

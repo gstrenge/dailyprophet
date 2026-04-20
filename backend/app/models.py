@@ -55,3 +55,10 @@ class ClipOrderRequest(BaseModel):
 class WifiCredentials(BaseModel):
     ssid: str
     password: str
+
+
+class WifiStatus(BaseModel):
+    mode: str           # "ap" or "sta"
+    wlan: str
+    ssid: str
+    message: str
