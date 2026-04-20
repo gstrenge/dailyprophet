@@ -196,7 +196,7 @@ const inputStyle: React.CSSProperties = {
   padding: "0.4rem 0.6rem",
   border: "1px solid var(--rule)",
   background: "var(--parchment)",
-  fontFamily: "var(--font-body)",
+  fontFamily: "Georgia, serif",
   fontSize: "0.9rem",
   borderRadius: "2px",
   color: "var(--ink)",
