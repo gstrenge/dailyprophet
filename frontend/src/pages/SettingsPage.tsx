@@ -96,12 +96,12 @@ export default function SettingsPage() {
           </div>
           <button className="btn btn-primary" type="submit" disabled={countdown !== null}>Save Network Credentials</button>
           {countdown !== null && (
-            <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", fontStyle: "italic" }}>
+            <p style={{ marginTop: "0.5rem", fontSize: "0.95rem", fontFamily: "var(--font-display)" }}>
               Connecting… reconnect to your home Wi-Fi in {countdown}s
             </p>
           )}
           {wifiMsg && countdown === null && (
-            <p style={{ marginTop: "0.5rem", fontSize: "0.85rem", fontStyle: "italic" }}>{wifiMsg}</p>
+            <p style={{ marginTop: "0.5rem", fontSize: "0.95rem", fontFamily: "var(--font-display)" }}>{wifiMsg}</p>
           )}
         </form>
       </section>
