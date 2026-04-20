@@ -31,7 +31,9 @@ sudo reboot
 
 ### What it installs
 
-**Packages:** `avahi-daemon` `rfkill` `xorg` `openbox` `firefox-esr` `lightdm` `unclutter` `curl` `ca-certificates`
+**Packages:** `avahi-daemon` `rfkill` `xorg` `openbox` `firefox-esr` `lightdm` `unclutter` `curl` `ca-certificates` `ffmpeg`
+
+> `ffmpeg` is required for Firefox-ESR to decode H.264 in `<video>` elements. Without it, the kiosk page loads but videos render as black frames (still images work fine). Pi OS Lite does not ship ffmpeg by default.
 
 **Network bootstrap**
 - Scripts installed to `/usr/local/lib/dailyprophet/network/`

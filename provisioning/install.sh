@@ -39,7 +39,8 @@ apt-get update -y
 apt-get install -y --no-install-recommends \
   avahi-daemon rfkill \
   xorg openbox firefox-esr lightdm unclutter \
-  curl ca-certificates
+  curl ca-certificates \
+  ffmpeg
 
 # Ensure Wi-Fi radio is unblocked
 rfkill unblock wifi 2>/dev/null || true
