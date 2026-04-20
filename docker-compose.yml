@@ -11,6 +11,9 @@ services:
       - CLIPS_DIR=/data/clips
       - STORAGE_QUOTA_GB=10
       - DATABASE_URL=sqlite:////data/clips/db.sqlite3
+      - DAILYPROPHET_NET_AGENT_ADDR=host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
