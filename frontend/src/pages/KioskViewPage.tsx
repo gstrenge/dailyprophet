@@ -261,13 +261,13 @@ export default function KioskViewPage() {
       <div style={{ ...fullscreen, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "0.5rem" }}>
         {phase === "idle" && (
           <>
-            <p style={{ fontFamily: "serif", fontSize: "2rem", color: "#c9a84c" }}>
+            <p style={{ fontFamily: "var(--font-masthead)", fontSize: "2rem", color: "#c9a84c" }}>
               The Daily Prophet
             </p>
-            <p style={{ fontFamily: "serif", fontStyle: "italic", color: "#8b6914", fontSize: "0.9rem" }}>
+            <p style={{ fontFamily: "var(--font-body)", fontStyle: "italic", color: "#8b6914", fontSize: "0.9rem" }}>
               No portraits on display.
             </p>
-            <p style={{ fontFamily: "serif", fontStyle: "italic", color: "#8b6914", fontSize: "0.75rem" }}>
+            <p style={{ fontFamily: "var(--font-body)", fontStyle: "italic", color: "#8b6914", fontSize: "0.75rem" }}>
               Upload a clip to begin.
             </p>
           </>
