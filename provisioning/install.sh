@@ -94,6 +94,12 @@ EOF
 # Openbox autostart: blanking off, cursor hidden, Firefox kiosk with retry loop
 install -d -m 0755 /etc/xdg/openbox
 cat > /etc/xdg/openbox/autostart << 'EOF'
+# Route output to DSI display; disable HDMI outputs.
+# X defaults to HDMI-1 as primary (even when disconnected) because connector
+# enumeration puts HDMI first. This forces the DSI panel as primary at its
+# native 800x480 resolution.
+xrandr --output DSI-1-2 --mode 800x480 --primary --output HDMI-1 --off --output HDMI-2 --off
+
 # Disable screen blanking and power management
 xset s off
 xset s noblank
@@ -149,10 +155,7 @@ EOF
 # pins it to the right card via the stable by-path symlink (immune to
 # card0/card1 renumbering across kernel versions).
 #
-# TODO DSI: when switching from HDMI to a DSI ribbon-cable touchscreen the
-# card selection below still works (same vc4-drm card), but DSI panels have
-# no EDID so Xorg cannot auto-detect resolution. You will need to add a
-# Monitor section with an explicit Modeline and Option "UseEdidFreqs" "false".
+
 install -d -m 0755 /etc/X11/xorg.conf.d
 # Remove any stale config from previous debug sessions
 rm -f /etc/X11/xorg.conf.d/99-modesetting.conf
