@@ -76,8 +76,8 @@ Test files and what they cover:
 File: [`docker-compose.yml`](docker-compose.yml) → `backend.environment`
 
 ```yaml
-- DISPLAY_WIDTH=1920
-- DISPLAY_HEIGHT=1080
+- DISPLAY_WIDTH=800
+- DISPLAY_HEIGHT=480
 ```
 
 Processed video is letterboxed (black bars) to exactly this size. Changing these values requires re-processing existing clips.

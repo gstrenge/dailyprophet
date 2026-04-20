@@ -11,6 +11,8 @@ services:
       - CLIPS_DIR=/data/clips
       - STORAGE_QUOTA_GB=10
       - DATABASE_URL=sqlite:////data/clips/db.sqlite3
+      - DISPLAY_WIDTH=800
+      - DISPLAY_HEIGHT=480
       - DAILYPROPHET_NET_AGENT_ADDR=host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"

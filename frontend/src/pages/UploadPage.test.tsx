@@ -23,8 +23,8 @@ function mockFetch() {
         status: 200,
         json: () =>
           Promise.resolve({
-            display_width: 1920,
-            display_height: 1080,
+            display_width: 800,
+            display_height: 480,
             max_clip_duration: 15,
           }),
       });

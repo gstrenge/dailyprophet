@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     # Set DISPLAY_WIDTH / DISPLAY_HEIGHT env vars in docker-compose.yml or .env.
     # All processed video is letterboxed to exactly this resolution.
     # -------------------------------------------------------------------------
-    display_width: int = 1920
-    display_height: int = 1080
+    display_width: int = 800
+    display_height: int = 480
 
     # Processing
     target_fps: int = 30
